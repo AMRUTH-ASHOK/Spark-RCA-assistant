@@ -48,6 +48,16 @@ pip install -r requirements.txt
 
 ## Usage
 
+### Using the Jupyter Notebook
+
+The system includes a Jupyter notebook (`agent_main.ipynb`) that uses the `%run` magic command to load the agent:
+
+1. Open the notebook: `jupyter notebook multiAgentSystem/agent_main.ipynb`
+2. Run the cells to load and use the agent
+3. The notebook automatically loads all components using `%run ../load_agent.py`
+
+### Using the Python API
+
 ```python
 from multiAgentSystem import AGENT
 
