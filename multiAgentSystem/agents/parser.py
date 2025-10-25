@@ -8,8 +8,8 @@ This module provides a parser function that uses specialized tools to:
 
 import json
 from typing import List, Dict, Any, Optional
-from ..tools.grep_tool import grep_path_tool
-from ..tools.gc_analyzer import GC_analyzer_tool
+from multiAgentSystem.tools.grep_tool import grep_path_tool
+from multiAgentSystem.tools.gc_analyzer import GC_analyzer_tool
 
 
 def parser_fn(logs_path: str, keywords: List[str], hint: str = "") -> str:

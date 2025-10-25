@@ -6,8 +6,8 @@ from typing import Optional, Any
 from databricks_langchain import ChatDatabricks
 from langchain_core.output_parsers import StrOutputParser
 
-from .config import LLM_ENDPOINT_NAME
-from .exceptions import ConfigurationError, LLMError
+from multiAgentSystem.config import LLM_ENDPOINT_NAME
+from multiAgentSystem.exceptions import ConfigurationError, LLMError
 
 # Global dependencies instance
 _deps: Optional['Dependencies'] = None
