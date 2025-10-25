@@ -11,6 +11,7 @@ from multiAgentSystem.utils import clip
 from multiAgentSystem.state import AgentState
 
 
+
 def critic_node(state: AgentState) -> AgentState:
     """
     Critic validates draft vs evidence and nudges confidence.

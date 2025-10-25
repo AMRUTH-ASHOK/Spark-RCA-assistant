@@ -10,6 +10,7 @@ from multiAgentSystem.agent import (
 )
 from multiAgentSystem.graph import build_graph
 from multiAgentSystem.state import AgentState
+
 from multiAgentSystem.deps import get_deps
 
 __all__ = [
