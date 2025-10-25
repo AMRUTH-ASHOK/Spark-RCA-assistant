@@ -1,0 +1,5 @@
+langgraph-supervisor==0.0.29
+mlflow[databricks]
+databricks-langchain
+databricks-agents
+uv
