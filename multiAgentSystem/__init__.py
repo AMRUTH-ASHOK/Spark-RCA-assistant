@@ -9,7 +9,8 @@ from multiAgentSystem.agent import (
     CONFIDENCE_THRESHOLD,
 )
 from multiAgentSystem.graph import build_graph
-from multiAgentSystem.types import AgentState
+from multiAgentSystem.state import AgentState
+
 from multiAgentSystem.deps import get_deps
 
 __all__ = [

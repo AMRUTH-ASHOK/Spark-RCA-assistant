@@ -8,7 +8,8 @@ from multiAgentSystem.deps import get_deps
 from multiAgentSystem.prompts import SUPERVISOR_PROMPT
 from multiAgentSystem.utils import invoke_json
 from multiAgentSystem.config import MAX_OUTER_ITERATIONS, CONFIDENCE_THRESHOLD
-from multiAgentSystem.types import AgentState, NodeType
+from multiAgentSystem.state import AgentState, NodeType
+
 
 
 def supervisor_node(state: AgentState) -> AgentState:

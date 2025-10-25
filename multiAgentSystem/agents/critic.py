@@ -8,7 +8,8 @@ from multiAgentSystem.deps import get_deps
 from multiAgentSystem.prompts import CRITIC_PROMPT
 from multiAgentSystem.utils import invoke_json
 from multiAgentSystem.utils import clip
-from multiAgentSystem.types import AgentState
+from multiAgentSystem.state import AgentState
+
 
 
 def critic_node(state: AgentState) -> AgentState:

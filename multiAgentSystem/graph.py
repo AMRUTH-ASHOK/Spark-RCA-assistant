@@ -3,7 +3,7 @@ Graph building logic for the multi-agent system.
 """
 
 from langgraph.graph import StateGraph, END
-from multiAgentSystem.types import AgentState
+from multiAgentSystem.state import AgentState
 from multiAgentSystem.agents import (
     supervisor_node,
     supervisor_router,

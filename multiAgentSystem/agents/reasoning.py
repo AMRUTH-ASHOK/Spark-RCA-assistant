@@ -14,7 +14,8 @@ from multiAgentSystem.utils import (
 )
 from multiAgentSystem.utils import clip, dedupe_keep_order
 from multiAgentSystem.config import MAX_ANALYZE_PARSE_LOOPS
-from multiAgentSystem.types import AgentState
+from multiAgentSystem.state import AgentState
+
 from multiAgentSystem.agents.analyzer import analyzer_llm
 from multiAgentSystem.agents.parser import parser_fn
 
