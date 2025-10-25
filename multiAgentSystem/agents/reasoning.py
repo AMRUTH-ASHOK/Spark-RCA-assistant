@@ -10,7 +10,7 @@ from ..utils import clip, dedupe_keep_order
 from ..config import MAX_ANALYZE_PARSE_LOOPS
 from ..types import AgentState
 from .analyzer import analyzer_llm
-from .parser_dummy import parser_fn
+from .parser import parser_fn
 
 
 def reasoning_node(state: AgentState) -> AgentState:
