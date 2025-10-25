@@ -3,10 +3,10 @@ Log Analyzer Agent for generating keywords from hypotheses.
 """
 
 from typing import List, Dict, Any
-from ..deps import get_deps
-from ..prompts import ANALYZER_PROMPT
-from ..utils import invoke_json
-from ..config import DEFAULT_KEYWORDS
+from multiAgentSystem.deps import get_deps
+from multiAgentSystem.prompts import ANALYZER_PROMPT
+from multiAgentSystem.utils import invoke_json
+from multiAgentSystem.config import DEFAULT_KEYWORDS
 
 
 def analyzer_llm(hypotheses: List[str], user_context: str, last_logs_chunk: str, existing_keywords: List[str]) -> Dict[str, Any]:

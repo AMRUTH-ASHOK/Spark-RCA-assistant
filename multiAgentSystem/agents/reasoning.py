@@ -3,14 +3,19 @@ Reasoning Agent for assessing evidence sufficiency and generating summaries.
 """
 
 from typing import List, Dict, Any
-from ..deps import get_deps
-from ..prompts import REASON_DECIDE_PROMPT, SUMMARIZE_PROMPT
-from ..utils import invoke_json, format_hypotheses, format_evidence, format_keywords
-from ..utils import clip, dedupe_keep_order
-from ..config import MAX_ANALYZE_PARSE_LOOPS
-from ..types import AgentState
-from .analyzer import analyzer_llm
-from .parser_dummy import parser_fn
+from multiAgentSystem.deps import get_deps
+from multiAgentSystem.prompts import REASON_DECIDE_PROMPT, SUMMARIZE_PROMPT
+from multiAgentSystem.utils import (
+    invoke_json,
+    format_hypotheses,
+    format_evidence,
+    format_keywords,
+)
+from multiAgentSystem.utils import clip, dedupe_keep_order
+from multiAgentSystem.config import MAX_ANALYZE_PARSE_LOOPS
+from multiAgentSystem.types import AgentState
+from multiAgentSystem.agents.analyzer import analyzer_llm
+from multiAgentSystem.agents.parser import parser_fn
 
 
 def reasoning_node(state: AgentState) -> AgentState:

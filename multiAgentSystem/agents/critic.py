@@ -4,11 +4,11 @@ Critic Agent for validating draft outputs against evidence.
 
 import json
 from typing import Dict, Any
-from ..deps import get_deps
-from ..prompts import CRITIC_PROMPT
-from ..utils import invoke_json
-from ..utils import clip
-from ..types import AgentState
+from multiAgentSystem.deps import get_deps
+from multiAgentSystem.prompts import CRITIC_PROMPT
+from multiAgentSystem.utils import invoke_json
+from multiAgentSystem.utils import clip
+from multiAgentSystem.types import AgentState
 
 
 def critic_node(state: AgentState) -> AgentState:
