@@ -1,5 +1,8 @@
-"""
-Type definitions for the multi-agent system.
+"""State and type aliases for the multi-agent system.
+
+This module intentionally avoids the name ``types`` so that it never
+conflicts with Python's :mod:`types` standard-library module when the
+package is imported from a notebook directory.
 """
 
 from __future__ import annotations

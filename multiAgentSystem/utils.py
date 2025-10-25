@@ -83,7 +83,7 @@ def invoke_json(prompt, variables: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Parsed JSON dict or empty dict if parsing fails
     """
-    from .deps import get_deps
+    from multiAgentSystem.deps import get_deps
     
     deps = get_deps()
     chain = prompt | deps.llm | deps.str_parser

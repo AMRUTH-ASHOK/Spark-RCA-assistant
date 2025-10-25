@@ -4,11 +4,11 @@ Supervisor Agent for orchestrating the multi-agent workflow.
 
 import json
 from typing import Literal
-from ..deps import get_deps
-from ..prompts import SUPERVISOR_PROMPT
-from ..utils import invoke_json
-from ..config import MAX_OUTER_ITERATIONS, CONFIDENCE_THRESHOLD
-from ..types import AgentState, NodeType
+from multiAgentSystem.deps import get_deps
+from multiAgentSystem.prompts import SUPERVISOR_PROMPT
+from multiAgentSystem.utils import invoke_json
+from multiAgentSystem.config import MAX_OUTER_ITERATIONS, CONFIDENCE_THRESHOLD
+from multiAgentSystem.state import AgentState, NodeType
 
 
 def supervisor_node(state: AgentState) -> AgentState:
