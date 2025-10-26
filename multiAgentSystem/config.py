@@ -10,8 +10,8 @@ from typing import Optional
 LLM_ENDPOINT_NAME = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-3-7-sonnet")
 
 # Loop controls
-MAX_OUTER_ITERATIONS = int(os.getenv("MAX_OUTER_ITERATIONS", "3"))
-MAX_ANALYZE_PARSE_LOOPS = int(os.getenv("MAX_ANALYZE_PARSE_LOOPS", "3"))
+MAX_OUTER_ITERATIONS = int(os.getenv("MAX_OUTER_ITERATIONS", "10"))
+MAX_ANALYZE_PARSE_LOOPS = int(os.getenv("MAX_ANALYZE_PARSE_LOOPS", "10"))
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.75"))
 
 # MLflow Configuration
