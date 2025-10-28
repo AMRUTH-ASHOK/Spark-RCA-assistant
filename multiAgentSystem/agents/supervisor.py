@@ -15,7 +15,7 @@ from multiAgentSystem.state import AgentState, NodeType
 def supervisor_node(state: AgentState) -> AgentState:
     """
     Supervisor decides next_action and manages outer iteration.
-    It always receives control after Reasoning or Critic.
+    It receives control after Reasoning, Critic, or at the start.
     
     Args:
         state: Current agent state
@@ -52,6 +52,7 @@ def supervisor_node(state: AgentState) -> AgentState:
             "draft": json.dumps(state.get("draft", {}), ensure_ascii=False) if state.get("draft") else "(none)",
             "evidence": evidence_preview,
         },
+        agent_name="supervisor"
     )
     proposed = str(sup.get("next_action") or "").strip().lower()
     rationale = str(sup.get("rationale") or "").strip()
@@ -77,6 +78,7 @@ def supervisor_node(state: AgentState) -> AgentState:
         else:
             next_action = proposed  # respect Supervisor LLM choice
 
+    # Increment iteration only when starting a new reasoning cycle from supervisor
     new_iteration = iteration + 1 if next_action == "reasoning" else iteration
 
     return {
@@ -101,4 +103,6 @@ def supervisor_router(state: AgentState) -> NodeType:
         return "critic"
     if nxt == "reasoning":
         return "reasoning"
+    if nxt == "analyzer":
+        return "analyzer"
     return "__end__"

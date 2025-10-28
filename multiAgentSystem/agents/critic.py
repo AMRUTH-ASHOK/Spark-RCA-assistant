@@ -28,6 +28,7 @@ def critic_node(state: AgentState) -> AgentState:
             "draft": json.dumps(state.get("draft", {}), ensure_ascii=False),
             "evidence": "\n---\n".join(state.get("evidence", [])) if state.get("evidence") else "(none)",
         },
+        agent_name="critic"
     )
     
     approve = bool(data.get("approve")) if isinstance(data.get("approve"), bool) else False

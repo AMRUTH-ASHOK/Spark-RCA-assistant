@@ -3,6 +3,7 @@ Log Analyzer Agent for generating keywords from hypotheses.
 """
 
 from typing import List, Dict, Any
+from multiAgentSystem.state import AgentState
 from multiAgentSystem.deps import get_deps
 from multiAgentSystem.prompts import ANALYZER_PROMPT
 from multiAgentSystem.utils import invoke_json
@@ -30,6 +31,7 @@ def analyzer_llm(hypotheses: List[str], user_context: str, last_logs_chunk: str,
             "keywords": ", ".join(existing_keywords) if existing_keywords else "(none)",
             "last_logs_chunk": last_logs_chunk or "(none)",
         },
+        agent_name="analyzer"
     )
     
     kws = data.get("keywords") or []
@@ -40,3 +42,30 @@ def analyzer_llm(hypotheses: List[str], user_context: str, last_logs_chunk: str,
         kws = DEFAULT_KEYWORDS
     
     return {"keywords": kws[:8], "rationale": str(data.get("rationale") or "").strip()}
+
+
+def analyzer_node(state: "AgentState") -> "AgentState":
+    """
+    Analyzer agent node that produces keywords from hypotheses and requests the parser.
+    Returns partial state that the graph runner will merge.
+    """
+    hypotheses = list(state.get("hypotheses") or [])
+    user_context = state.get("user_context", "")
+    last_logs_chunk = state.get("last_logs_chunk", "") or ""
+    existing_keywords = list(state.get("keywords") or [])
+
+    out = analyzer_llm(hypotheses, user_context, last_logs_chunk, existing_keywords)
+    new_kws = [str(k).strip() for k in out.get("keywords", []) if str(k).strip()]
+    # Merge new keywords while preserving order
+    from multiAgentSystem.utils import dedupe_keep_order
+    keywords = dedupe_keep_order(existing_keywords + new_kws)
+
+    # Increment analyze_parse_loops counter (the analyzer is part of that inner loop)
+    analyze_loops = int(state.get("analyze_parse_loops", 0)) + 1
+
+    return {
+        "keywords": keywords,
+        "last_generated_keywords": new_kws,
+        "analyze_parse_loops": analyze_loops,
+        # After analyzer, the graph will automatically route to parser via edge
+    }

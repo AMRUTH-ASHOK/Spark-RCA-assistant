@@ -23,6 +23,7 @@ class AgentState(TypedDict, total=False):
     evidence: List[str]
     last_logs_chunk: str
     analyzer_satisfied: bool
+    last_generated_keywords: List[str]  # Keywords from most recent analyzer run
 
     # Draft + quality
     draft: Dict[str, str]          # {"problem": "...", "rca": "...", "mitigation": "..."}
@@ -32,7 +33,7 @@ class AgentState(TypedDict, total=False):
 
     # Supervisor control
     last_status: Literal["", "continue", "summarized"]
-    next_action: Literal["", "reasoning", "critic", "end"]
+    next_action: Literal["", "reasoning", "critic", "end", "analyzer"]
     supervisor_rationale: str
 
     # Counters
@@ -41,5 +42,5 @@ class AgentState(TypedDict, total=False):
 
 # Literal types used throughout the system
 StatusType = Literal["", "continue", "summarized"]
-ActionType = Literal["", "reasoning", "critic", "end"]
-NodeType = Literal["reasoning", "critic", "__end__"]
+ActionType = Literal["", "reasoning", "critic", "end", "analyzer"]
+NodeType = Literal["reasoning", "critic", "analyzer", "parser", "__end__"]

@@ -15,6 +15,7 @@ from multiAgentSystem.utils import (
 from multiAgentSystem.utils import clip, dedupe_keep_order
 from multiAgentSystem.config import MAX_ANALYZE_PARSE_LOOPS
 from multiAgentSystem.state import AgentState
+from multiAgentSystem.exceptions import StateError
 
 from multiAgentSystem.agents.analyzer import analyzer_llm
 from multiAgentSystem.agents.parser import parser_fn
@@ -24,9 +25,9 @@ def reasoning_node(state: AgentState) -> AgentState:
     """
     Reasoning Agent:
       - assesses sufficiency
-      - if insufficient: runs inner analyser↔parser mini-loop (up to MAX_ANALYZE_PARSE_LOOPS)
-      - re-assesses; if still insufficient -> last_status='continue'
-      - if sufficient: summarises -> last_status='summarized' with draft+confidence
+      - if insufficient and haven't exceeded loop limit: triggers analyzer→parser mini-loop
+      - re-assesses after getting new evidence
+      - if sufficient: summarizes -> last_status='summarized' with draft+confidence
       
     Args:
         state: Current agent state
@@ -34,6 +35,8 @@ def reasoning_node(state: AgentState) -> AgentState:
     Returns:
         Updated state with reasoning results
     """
+    analyze_loops = int(state.get("analyze_parse_loops", 0))
+    
     # 1) Assess sufficiency
     decide = invoke_json(
         REASON_DECIDE_PROMPT,
@@ -45,6 +48,7 @@ def reasoning_node(state: AgentState) -> AgentState:
             "keywords": format_keywords(state.get("keywords", [])),
             "iteration": int(state.get("iteration", 0)),
         },
+        agent_name="reasoning"
     )
 
     need_more = bool(decide.get("need_more"))
@@ -56,48 +60,21 @@ def reasoning_node(state: AgentState) -> AgentState:
     evidence = list(state.get("evidence") or [])
     keywords = list(state.get("keywords") or [])
     last_logs_chunk = state.get("last_logs_chunk", "") or ""
-    analyze_loops = int(state.get("analyze_parse_loops", 0))
 
-    # 2) If insufficient, run the inner analyser↔parser loop
-    if need_more:
-        for _ in range(MAX_ANALYZE_PARSE_LOOPS):
-            analyze_loops += 1
-            ana = analyzer_llm(hypotheses, state.get("user_context", ""), last_logs_chunk, keywords)
-            new_kws = ana["keywords"]
-            keywords = dedupe_keep_order((keywords or []) + new_kws)
+    # 2) If insufficient and haven't exceeded loop limit, trigger analyzer
+    if need_more and analyze_loops < MAX_ANALYZE_PARSE_LOOPS:
+        # Request the analyzer to run (which will trigger parser, then return to reasoning)
+        return {
+            "hypotheses": hypotheses,
+            "keywords": keywords,
+            "evidence": evidence,
+            "last_logs_chunk": last_logs_chunk,
+            "analyze_parse_loops": analyze_loops,
+            "last_status": "continue",
+            "next_action": "analyzer",
+        }
 
-            logs_chunk = parser_fn(state.get("logs_path", ""), new_kws, hint="loop")
-            last_logs_chunk = logs_chunk
-            evidence.append(logs_chunk)
-
-            # MVP: dummy parser always returns something; break after first loop.
-            break
-
-        # Re-assess sufficiency after collecting evidence
-        decide2 = invoke_json(
-            REASON_DECIDE_PROMPT,
-            {
-                "user_context": state.get("user_context", ""),
-                "logs_path": state.get("logs_path", ""),
-                "hypotheses": format_hypotheses(hypotheses),
-                "evidence": format_evidence(evidence),
-                "keywords": format_keywords(keywords),
-                "iteration": int(state.get("iteration", 0)),
-            },
-        )
-        need_more = bool(decide2.get("need_more"))
-
-        if need_more:
-            return {
-                "hypotheses": hypotheses,
-                "keywords": keywords,
-                "evidence": evidence,
-                "last_logs_chunk": last_logs_chunk,
-                "analyze_parse_loops": analyze_loops,
-                "last_status": "continue",
-            }
-
-    # 3) Evidence sufficient → summarise inside Reasoning
+    # 3) Either evidence is sufficient OR we've hit max loops → summarize
     summary = invoke_json(
         SUMMARIZE_PROMPT,
         {
@@ -106,6 +83,7 @@ def reasoning_node(state: AgentState) -> AgentState:
             "hypotheses": format_hypotheses(hypotheses),
             "evidence": format_evidence(evidence),
         },
+        agent_name="reasoning"
     )
 
     problem = str(summary.get("problem") or "").strip() or "Problem: (unspecified)"
@@ -127,4 +105,5 @@ def reasoning_node(state: AgentState) -> AgentState:
         "draft": {"problem": problem, "rca": rca, "mitigation": mitigation},
         "confidence": conf,
         "last_status": "summarized",
+        "next_action": "",  # Clear next_action, let supervisor decide
     }

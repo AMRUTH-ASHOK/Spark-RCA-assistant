@@ -72,13 +72,16 @@ def dedupe_keep_order(items: List[str]) -> List[str]:
 
 
 # LLM chain utilities
-def invoke_json(prompt, variables: Dict[str, Any]) -> Dict[str, Any]:
+def invoke_json(prompt, variables: Dict[str, Any], agent_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Helper to run prompt → LLM → string → JSON with tolerant parsing.
     
     Args:
         prompt: ChatPromptTemplate to invoke
         variables: Variables to pass to the prompt
+        agent_name: Optional agent name to use agent-specific LLM. 
+                   If None, uses default LLM for backward compatibility.
+                   Valid values: 'reasoning', 'analyzer', 'parser', 'critic', 'supervisor'
         
     Returns:
         Parsed JSON dict or empty dict if parsing fails
@@ -86,7 +89,11 @@ def invoke_json(prompt, variables: Dict[str, Any]) -> Dict[str, Any]:
     from multiAgentSystem.deps import get_deps
     
     deps = get_deps()
-    chain = prompt | deps.llm | deps.str_parser
+    
+    # Use agent-specific LLM if agent_name is provided, otherwise use default
+    llm = deps.get_agent_llm(agent_name) if agent_name else deps.llm
+    
+    chain = prompt | llm | deps.str_parser
     text = chain.invoke(variables)
     data = safe_json_loads(text) or {}
     if not isinstance(data, dict):

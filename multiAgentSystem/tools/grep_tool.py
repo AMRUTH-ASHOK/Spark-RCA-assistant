@@ -90,13 +90,16 @@ def grep_path_tool(
         except: return p.open("r", encoding="latin-1", errors="ignore")
 
     # -------- pattern prep --------
-    if restrict_to_volumes and not str(target).startswith("/Volumes/"): return "[]"
-    if ".." in str(target): return "[]"
+    if restrict_to_volumes and not str(target).startswith("/Volumes/"):
+        return json.dumps([], ensure_ascii=False)
+    if ".." in str(target):
+        return json.dumps([], ensure_ascii=False)
 
     pats: List[str] = []
     if pattern: pats.append(pattern)
     if patterns: pats.extend(list(patterns))
-    if not pats: return "[]"
+    if not pats:
+        return json.dumps([], ensure_ascii=False)
 
     flags = re.MULTILINE | (re.IGNORECASE if ignore_case else 0)
 
@@ -108,7 +111,7 @@ def grep_path_tool(
     try:
         rx_list = [_compile(p) for p in pats]
     except re.error:
-        return "[]"
+        return json.dumps([], ensure_ascii=False)
 
     # combined regex for fast ANY-span scanning
     if mode.lower() == "any":
@@ -116,7 +119,7 @@ def grep_path_tool(
             combined = "|".join(f"(?:{re.escape(p) if fixed else p})" for p in pats)
             rx_any = re.compile(combined, flags=flags)
         except re.error:
-            return "[]"
+            return json.dumps([], ensure_ascii=False)
     else:
         rx_any = None  # not used in ALL mode
 
