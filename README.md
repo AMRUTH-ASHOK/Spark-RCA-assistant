@@ -1,133 +1,344 @@
-# Multi-Agent System for Root Cause Analysis
+# Spark RCA Assistant - Multi-Agent System
 
-A supervisor-centric multi-agent system for analyzing Spark logs and performing root cause analysis using LangGraph and Databricks LLM.
+A sophisticated multi-agent system for performing Root Cause Analysis (RCA) on Apache Spark logs using LangGraph and LLMs.
+
+## Overview
+
+This system uses a coordinated team of AI agents to analyze Spark execution logs, identify problems, determine root causes, and suggest mitigation strategies. It's designed to work in Databricks environments and can analyze various Spark failure modes including OOM errors, executor losses, GC issues, and more.
 
 ## Architecture
 
-The system uses a modular architecture with specialized tools for log analysis:
+### Multi-Agent Design
+
+The system employs a **hierarchical multi-agent architecture** with the following specialized agents:
+
+1. **Supervisor Agent** - Orchestrates the overall workflow and decides which agent to invoke next
+2. **Reasoning Agent** - Assesses evidence sufficiency, generates hypotheses, and produces summaries
+3. **Analyzer Agent** - Converts hypotheses into targeted log search keywords
+4. **Parser Agent** - Searches logs using specialized tools (grep, GC analyzer)
+5. **Critic Agent** - Validates draft outputs against collected evidence
+
+### Agent Flow
 
 ```
-multiAgentSystem/
-├── __init__.py           # Main exports
-├── config.py             # Configuration constants and environment overrides
-├── types.py              # Type definitions (including AgentState)
-├── utils.py              # General utility and JSON functions
-├── prompts.py            # ChatPromptTemplate objects for all agents
-├── deps.py               # Dependency injection and LLM factory
-├── exceptions.py         # Custom exception classes
-├── graph.py              # StateGraph building and compilation
-├── agent_main.ipynb      # RCAAgent wrapper and MLflow integration
-├── agents/               # Individual agent implementations
-│   ├── __init__.py
-│   ├── supervisor.py     # Supervisor agent + routing logic
-│   ├── reasoning.py      # Reasoning agent for evidence assessment
-│   ├── analyzer.py       # Log analyzer for keyword generation
-│   ├── parser.py         # Log parser with specialized tools
-│   └── critic.py         # Critic agent for validation
-└── tools/                # Specialized analysis tools
+┌─────────────┐
+│  Supervisor │ (Entry Point)
+└──────┬──────┘
+       │
+       ├──> Reasoning ──> Supervisor (bidirectional)
+       │        │
+       │        ├──> LogAnalyser ──> Reasoning (bidirectional)
+       │                 │
+       │                 └──> LogParser ──> LogAnalyser (bidirectional)
+       │
+       ├──> Critic ──> Supervisor (bidirectional)
+       │
+       └──> END
+```
+
+## Bidirectional Agent Interactions
+
+The system follows strict bidirectional communication patterns:
+
+1. **Supervisor <-> Reasoning**: Supervisor initiates reasoning cycles; Reasoning returns results to Supervisor
+2. **Supervisor <-> Critic**: Supervisor requests validation; Critic returns approval to Supervisor
+3. **Reasoning <-> LogAnalyser**: Reasoning requests log analysis; LogAnalyser returns keywords to Reasoning
+4. **LogAnalyser <-> LogParser**: LogAnalyser requests log search; LogParser returns evidence to LogAnalyser
+
+## Project Structure
+
+```
+Spark-RCA-assistant/
+├── requirements.txt           # Python dependencies
+└── multiAgentSystem/
     ├── __init__.py
-    ├── gc_analyzer.py    # GC log analysis tool
-    └── grep_tool.py      # Log search tool
+    ├── agent_main.ipynb      # Main notebook with RCAAgent class
+    ├── config.py             # Configuration constants
+    ├── deps.py               # Dependency injection
+    ├── exceptions.py         # Custom exceptions
+    ├── graph.py              # LangGraph workflow definition
+    ├── prompts.py            # LLM prompt templates
+    ├── state.py              # Shared state definitions
+    ├── utils.py              # Utility functions
+    ├── agents/               # Agent implementations
+    │   ├── __init__.py
+    │   ├── analyzer.py       # Log Analyzer Agent
+    │   ├── critic.py         # Critic Agent
+    │   ├── parser.py         # Log Parser Agent
+    │   ├── reasoning.py      # Reasoning Agent
+    │   └── supervisor.py     # Supervisor Agent
+    └── tools/                # Specialized analysis tools
+        ├── __init__.py
+        ├── gc_analyzer.py    # GC log analysis tool
+        └── grep_tool.py      # Pattern search tool
 ```
 
-## Key Features
+## Key Components
 
-- **Modular Design**: Clear separation of concerns with dedicated modules for each component
-- **Specialized Tools**: Dedicated tools for log analysis and pattern searching
-- **Dependency Injection**: Centralized dependency management for better testability
-- **Type Safety**: Comprehensive type definitions using TypedDict and Literal types
-- **Configuration Management**: Environment-based configuration with sensible defaults
-- **Error Handling**: Custom exception hierarchy for better error management
-- **Reusable Components**: Utility functions and helpers for common operations
+### State Management (`state.py`)
 
-## Installation
+The system uses a shared `AgentState` TypedDict that flows through all agents:
 
-```bash
-pip install -r requirements.txt
+- **Inputs**: `user_context`, `logs_path`
+- **Working Memory**: `hypotheses`, `keywords`, `evidence`, `last_logs_chunk`
+- **Draft & Quality**: `draft`, `confidence`, `critic_approved`, `critique`
+- **Control Flow**: `last_status`, `next_action`, `supervisor_rationale`
+- **Counters**: `iteration`, `analyze_parse_loops`
+
+### Configuration (`config.py`)
+
+Key configuration parameters:
+
+- `LLM_ENDPOINT_NAME`: Databricks LLM endpoint (default: "databricks-claude-3-7-sonnet")
+- `MAX_OUTER_ITERATIONS`: Maximum supervisor-level iterations (default: 3)
+- `MAX_ANALYZE_PARSE_LOOPS`: Maximum analyzer-parser mini-loops (default: 3)
+- `CONFIDENCE_THRESHOLD`: Minimum confidence to finish (default: 0.75)
+
+### Tools (`tools/`)
+
+1. **grep_tool.py**: file search with regex support
+   - Multi-pattern search (AND/OR logic)
+   - Hidden file handling
+   - Binary file detection
+   - Result limiting and formatting
+
+2. **gc_analyzer.py**: GC log parser
+   - Parses GC pause events
+   - Calculates statistics (p50, p95, p99 pauses)
+   - Identifies STW (Stop-The-World) events
+   - Tracks memory freed and heap usage
+
+## Control Flow
+
+### 1. Entry Phase
+```
+User Request -> Supervisor -> Reasoning Agent
+```
+
+### 2. Evidence Gathering Phase
+```
+Reasoning (need_more=true) -> LogAnalyser -> LogParser -> LogAnalyser -> Reasoning (reassess)
+```
+This loop continues up to `MAX_ANALYZE_PARSE_LOOPS` times until:
+- Evidence is sufficient, OR
+- Maximum loops reached
+
+### 3. Draft Creation Phase
+```
+Reasoning (sufficient evidence) -> [Creates Draft] -> Supervisor
+```
+
+### 4. Validation Phase
+```
+Supervisor -> Critic -> [Validates Draft] -> Supervisor
+```
+
+### 5. Termination Phase
+```
+Supervisor decides:
+- END if: critic_approved AND confidence >= threshold
+- END if: iteration >= MAX_OUTER_ITERATIONS
+- Reasoning again if: more analysis needed
+```
+
+## Data Flow
+
+### Input Flow
+```
+User Request
+    |-- user_context (problem description)
+    +-- logs_path (path to Spark logs)
+        |
+        v
+    Initial State
+        |
+        v
+    Supervisor
+```
+
+### Evidence Collection Flow
+```
+Hypotheses -> LogAnalyser -> Keywords -> LogParser -> Log Evidence
+                                                        |
+                                                        v
+                                                   (appended to state.evidence)
+                                                        |
+                                                        v
+                                                   LogAnalyser -> Reasoning (reassess)
+```
+
+### Output Flow
+```
+Final State
+    |-- draft
+    |   |-- problem (description)
+    |   |-- rca (root cause analysis)
+    |   +-- mitigation (suggested fixes)
+    |-- confidence (0.0 - 1.0)
+    |-- keywords (used for search)
+    |-- evidence (collected log snippets)
+    |-- critic_approved (boolean)
+    +-- critique (feedback from critic)
 ```
 
 ## Usage
 
-### Using the Jupyter Notebook
-
-The system includes a Jupyter notebook (`agent_main.ipynb`) that uses the `%run` magic command to load the agent:
-
-1. Open the notebook: `jupyter notebook multiAgentSystem/agent_main.ipynb`
-2. Run the cells to load and use the agent
-3. The notebook automatically loads all components using `%run ../load_agent.py`
-
-### Using the Python API
+### In Databricks Notebook
 
 ```python
-from multiAgentSystem import AGENT
+# 1. Install dependencies
+%pip install -r requirements.txt
+dbutils.library.restartPython()
 
-# Prepare request
-req = {
-    "user_context": "After increasing executor memory and enabling AQE, the nightly ETL job intermittently fails. Symptoms include long GC pauses and 'executor lost' messages around the shuffle stage.",
-    "logs_path": "s3://company-bucket/prod/spark-logs/job-1234/"
+# 2. Run the RCAAgent definition cell in agent_main.ipynb
+
+# 3. Use the AGENT instance
+from multiAgentSystem.agent_main import AGENT
+
+request = {
+    "user_context": "Job failed with executor lost errors during shuffle",
+    "logs_path": "/Volumes/catalog/schema/spark-logs/job-123/"
 }
 
-# Run analysis
-result = AGENT.predict(req)
+result = AGENT.predict(request)
 
 # Access results
-print(f"Problem: {result['output']['problem']}")
-print(f"Root Cause: {result['output']['rca']}")
-print(f"Mitigation: {result['output']['mitigation']}")
-print(f"Confidence: {result['output']['confidence']}")
+print(result["output"]["problem"])
+print(result["output"]["rca"])
+print(result["output"]["mitigation"])
 ```
 
-## Streaming Usage
+### Streaming Mode
 
 ```python
-# Stream progress events
-for event in AGENT.predict_stream(req):
+for event in AGENT.predict_stream(request):
+    print(f"{event['type']}: {event['node']}")
     if event['type'] == 'final':
-        result = event['data']
-        break
-    print(f"Step: {event['node']} - {event['type']}")
+        print(event['data'])
 ```
 
-## Configuration
+## Configuration via Environment Variables
 
-The system can be configured via environment variables:
+```bash
+export LLM_ENDPOINT_NAME="databricks-claude-3-7-sonnet"
+export MAX_OUTER_ITERATIONS="3"
+export MAX_ANALYZE_PARSE_LOOPS="3"
+export CONFIDENCE_THRESHOLD="0.75"
+export MLFLOW_ENABLED="true"
+```
 
-- `LLM_ENDPOINT_NAME`: Databricks LLM endpoint (default: "databricks-claude-3-7-sonnet")
-- `MAX_OUTER_ITERATIONS`: Maximum outer iterations (default: 3)
-- `MAX_ANALYZE_PARSE_LOOPS`: Maximum inner analysis loops (default: 3)
-- `CONFIDENCE_THRESHOLD`: Confidence threshold for completion (default: 0.75)
-- `MLFLOW_ENABLED`: Enable MLflow integration (default: true)
+## Agent Details
 
-## Agent Workflow
+### Supervisor Agent
+- **Role**: Orchestration and decision-making
+- **Inputs**: Current state, iteration count, confidence level
+- **Outputs**: `next_action` (reasoning/critic/end)
+- **Logic**: Enforces iteration limits, confidence thresholds, validation requirements
+- **Interactions**: Bidirectional with Reasoning and Critic
 
-1. **Supervisor**: Orchestrates the workflow and decides next actions
-2. **Reasoning**: Assesses evidence sufficiency and generates hypotheses
-3. **Analyzer**: Converts hypotheses into searchable keywords
-4. **Parser**: Extracts and analyzes relevant log snippets using specialized tools
-5. **Critic**: Validates draft outputs against evidence
+### Reasoning Agent
+- **Role**: Hypothesis generation and evidence assessment
+- **Inputs**: User context, current hypotheses, evidence
+- **Outputs**: 
+  - If insufficient: triggers LogAnalyser with refined hypotheses
+  - If sufficient: produces draft (problem/RCA/mitigation)
+- **Logic**: Uses LLM to assess evidence sufficiency, generates/refines hypotheses
+- **Interactions**: Bidirectional with Supervisor and LogAnalyser
 
-## Specialized Tools
+### LogAnalyser Agent (Analyzer)
+- **Role**: Converts hypotheses to search keywords
+- **Inputs**: Hypotheses, user context, existing keywords
+- **Outputs**: Focused list of 3-8 keywords for log search
+- **Logic**: Uses domain knowledge to identify high-signal terms (error codes, exception types, etc.)
+- **Interactions**: Bidirectional with Reasoning and LogParser
 
-The system includes specialized tools for log analysis:
+### LogParser Agent (Parser)
+- **Role**: Log search and extraction
+- **Inputs**: Logs path, keywords
+- **Outputs**: Relevant log snippets
+- **Tools**: 
+  - grep_path_tool for pattern matching
+  - GC_analyzer_tool for GC-specific analysis
+- **Logic**: Detects GC-related issues and routes to appropriate tool
+- **Interactions**: Bidirectional with LogAnalyser
 
-1. **GC Analyzer Tool**: Analyzes garbage collection logs to identify memory issues
-   - Parses GC log formats and extracts key metrics
-   - Provides summary statistics (events, pauses, memory freed)
-   - Identifies problematic patterns (long pauses, full GCs)
-   - Generates formatted tables for visualization
+### Critic Agent
+- **Role**: Quality assurance
+- **Inputs**: Draft, evidence
+- **Outputs**: `approve` (bool), `reasons` (string), `confidence_adjustment` (-0.25 to +0.25)
+- **Logic**: Validates that claims in draft are supported by evidence
+- **Interactions**: Bidirectional with Supervisor
 
-2. **Grep Path Tool**: Searches log files for specific patterns
-   - Supports multiple search patterns with AND/OR logic
-   - Handles large files efficiently
-   - Returns structured results with line numbers and context
+## Loop Control Mechanisms
 
-## Development
+1. **Outer Loop** (Supervisor-level)
+   - Controlled by `iteration` counter
+   - Maximum: `MAX_OUTER_ITERATIONS` (default: 3)
+   - Each reasoning cycle increments this
 
-The modular structure makes it easy to:
+2. **Inner Loop** (LogAnalyser-LogParser)
+   - Controlled by `analyze_parse_loops` counter
+   - Maximum: `MAX_ANALYZE_PARSE_LOOPS` (default: 3)
+   - Each LogAnalyser run increments this
+   - Resets implicitly on next outer iteration
 
-- Add new agents by implementing them in the `agents/` directory
-- Add new analysis tools in the `tools/` directory
-- Modify prompts in `prompts.py`
-- Adjust configuration in `config.py`
-- Add new utilities in `utils.py`
-- Extend error handling in `exceptions.py`
+3. **Confidence Threshold**
+   - System terminates when `confidence >= CONFIDENCE_THRESHOLD` AND `critic_approved = true`
+   - Default threshold: 0.75
+
+## Error Handling
+
+The system includes comprehensive error handling:
+
+- **LLMError**: LLM invocation failures
+- **ConfigurationError**: Invalid configuration
+- **StateError**: Invalid state transitions
+- **GraphError**: Graph execution failures
+
+All tools return graceful error messages rather than raising exceptions, ensuring the workflow continues even if individual operations fail.
+
+## MLflow Integration
+
+When running in Databricks with MLflow available:
+- Automatic logging of LangChain operations
+- Model registration via `mlflow.models.set_model()`
+- Trace tracking for debugging
+
+## Dependencies
+
+Key dependencies (see `requirements.txt`):
+- `langgraph-supervisor==0.0.29` - Multi-agent orchestration
+- `mlflow[databricks]` - Experiment tracking
+- `databricks-langchain` - LLM integration
+- `databricks-agents` - Agent framework
+
+## Best Practices
+
+1. **Provide Clear Context**: The more specific the `user_context`, the better the analysis
+2. **Use Valid Paths**: Ensure `logs_path` points to actual Spark logs
+3. **Tune Configuration**: Adjust iterations and confidence based on complexity
+4. **Review Evidence**: Check `result["output"]["evidence"]` to understand reasoning
+5. **Monitor Iterations**: High iteration counts may indicate unclear context
+
+## Limitations
+
+- Requires access to Databricks LLM endpoints
+- Works best with structured Spark logs
+- Quality depends on LLM capabilities
+- May require multiple iterations for complex issues
+
+## Future Enhancements
+
+- Add support for additional log formats
+- Implement caching for repeated analyses
+- Add visualization of agent decision flow
+- Support for batch processing multiple log sets
+- Custom tool integration framework
+
+## License
+
+[Add your license information here]
+
+## Contact
+
+[Add contact information here]
