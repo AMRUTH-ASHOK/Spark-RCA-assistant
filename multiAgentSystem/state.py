@@ -35,6 +35,7 @@ class AgentState(TypedDict, total=False):
     last_status: Literal["", "continue", "summarized"]
     next_action: Literal["", "reasoning", "critic", "end", "analyzer"]
     supervisor_rationale: str
+    pdf_report_path: Optional[str]  # Path to generated PDF report
 
     # Counters
     analyze_parse_loops: int

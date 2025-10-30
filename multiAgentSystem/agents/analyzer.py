@@ -13,6 +13,7 @@ from multiAgentSystem.config import DEFAULT_KEYWORDS
 def analyzer_llm(hypotheses: List[str], user_context: str, last_logs_chunk: str, existing_keywords: List[str]) -> Dict[str, Any]:
     """
     Convert hypotheses and context into high-signal keywords for Spark logs.
+    Always includes DEFAULT_KEYWORDS plus LLM-suggested keywords.
     
     Args:
         hypotheses: List of hypotheses to analyze
@@ -34,14 +35,21 @@ def analyzer_llm(hypotheses: List[str], user_context: str, last_logs_chunk: str,
         agent_name="analyzer"
     )
     
-    kws = data.get("keywords") or []
-    if not isinstance(kws, list):
-        kws = [str(kws)]
-    kws = [str(k).strip() for k in kws if str(k).strip()]
-    if not kws:
-        kws = DEFAULT_KEYWORDS
+    # Get LLM-suggested keywords
+    llm_kws = data.get("keywords") or []
+    if not isinstance(llm_kws, list):
+        llm_kws = [str(llm_kws)]
+    llm_kws = [str(k).strip() for k in llm_kws if str(k).strip()]
     
-    return {"keywords": kws[:8], "rationale": str(data.get("rationale") or "").strip()}
+    # ALWAYS start with DEFAULT_KEYWORDS, then add LLM suggestions
+    # This ensures we always search for common error patterns
+    combined_kws = list(DEFAULT_KEYWORDS) + llm_kws
+    
+    # Deduplicate while preserving order (DEFAULT_KEYWORDS come first)
+    from multiAgentSystem.utils import dedupe_keep_order
+    final_kws = dedupe_keep_order(combined_kws)
+    
+    return {"keywords": final_kws[:15], "rationale": str(data.get("rationale") or "").strip()}
 
 
 def analyzer_node(state: "AgentState") -> "AgentState":

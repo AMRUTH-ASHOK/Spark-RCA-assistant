@@ -38,7 +38,9 @@ CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.75"))
 # MLflow Configuration
 MLFLOW_ENABLED = os.getenv("MLFLOW_ENABLED", "true").lower() == "true"
 
-# Default keywords for fallback analysis
+# Default keywords - ALWAYS included in log searches
+# These core keywords are mandatory and will always be searched along with 
+# any LLM-suggested keywords from the analyzer agent
 DEFAULT_KEYWORDS = [
     "ERROR", 
     "Exception", 

@@ -34,3 +34,7 @@ env/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Generated Reports
+multiAgentSystem/Reports/
+*.pdf

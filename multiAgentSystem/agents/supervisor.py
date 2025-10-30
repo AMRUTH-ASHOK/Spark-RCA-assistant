@@ -9,6 +9,7 @@ from multiAgentSystem.prompts import SUPERVISOR_PROMPT
 from multiAgentSystem.utils import invoke_json
 from multiAgentSystem.config import MAX_OUTER_ITERATIONS, CONFIDENCE_THRESHOLD
 from multiAgentSystem.state import AgentState, NodeType
+from multiAgentSystem.tools.pdf_report_tool import generate_rca_report_tool
 
 
 
@@ -81,10 +82,36 @@ def supervisor_node(state: AgentState) -> AgentState:
     # Increment iteration only when starting a new reasoning cycle from supervisor
     new_iteration = iteration + 1 if next_action == "reasoning" else iteration
 
+    # Generate PDF report if ending the workflow
+    pdf_report_path = None
+    if next_action == "end":
+        try:
+            # Prepare output data for PDF generation
+            output_data = {
+                "problem": state.get("draft", {}).get("problem", ""),
+                "rca": state.get("draft", {}).get("rca", ""),
+                "mitigation": state.get("draft", {}).get("mitigation", ""),
+                "confidence": confidence,
+                "iterations": new_iteration,
+                "keywords": state.get("keywords", []),
+                "evidence": state.get("evidence", []),
+                "critic_approved": critic_approved,
+                "critique": state.get("critique", "")
+            }
+            
+            # Generate the PDF report
+            pdf_report_path = generate_rca_report_tool(output_data)
+            print(f"\n✓ PDF Report generated: {pdf_report_path}")
+            
+        except Exception as e:
+            print(f"\n⚠ Warning: Failed to generate PDF report: {e}")
+            pdf_report_path = f"Error: {str(e)}"
+
     return {
         "next_action": next_action,
         "iteration": new_iteration,
         "supervisor_rationale": rationale,
+        "pdf_report_path": pdf_report_path,
     }
 
 

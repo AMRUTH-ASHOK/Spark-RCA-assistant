@@ -62,7 +62,7 @@ def parser_fn(logs_path: str, keywords: List[str], hint: str = "") -> str:
             target=logs_path,
             pattern=grep_pattern,
             ignore_case=True,
-            max_results=100
+            max_results=5000  # Increased to capture more log context
         )
         
         # Parse the JSON results
@@ -101,7 +101,7 @@ def parser_fn(logs_path: str, keywords: List[str], hint: str = "") -> str:
         
         # For non-GC issues, format the grep results
         formatted_results = []
-        for item in grep_results[:20]:  # Limit to 20 results for readability
+        for item in grep_results[:100]:  # Show more results for better context
             path = item.get("path", "unknown")
             line_no = item.get("line_no", 0)
             line_text = item.get("line_text", "")

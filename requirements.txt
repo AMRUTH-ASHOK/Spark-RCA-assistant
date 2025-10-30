@@ -3,3 +3,4 @@ mlflow[databricks]
 databricks-langchain
 databricks-agents
 uv
+reportlab
