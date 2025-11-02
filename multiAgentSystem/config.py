@@ -14,7 +14,7 @@ LLM_ENDPOINT_NAME = os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-3-7-sonnet
 # Each agent can have its own LLM endpoint configured via environment variables
 # or using the dictionary below. Environment variables take precedence.
 AGENT_LLM_ENDPOINTS: Dict[str, str] = {
-    "reasoning": os.getenv("REASONING_LLM_ENDPOINT", os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-3-7-sonnet")),
+    "reasoning": os.getenv("REASONING_LLM_ENDPOINT", os.getenv("LLM_ENDPOINT_NAME", "databricks-gpt-5")),
     "analyzer": os.getenv("ANALYZER_LLM_ENDPOINT", os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-3-7-sonnet")),
     "parser": os.getenv("PARSER_LLM_ENDPOINT", os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-3-7-sonnet")),
     "critic": os.getenv("CRITIC_LLM_ENDPOINT", os.getenv("LLM_ENDPOINT_NAME", "databricks-claude-3-7-sonnet")),
@@ -31,8 +31,8 @@ AGENT_LLM_ENDPOINTS: Dict[str, str] = {
 # }
 
 # Loop controls
-MAX_OUTER_ITERATIONS = int(os.getenv("MAX_OUTER_ITERATIONS", "3"))
-MAX_ANALYZE_PARSE_LOOPS = int(os.getenv("MAX_ANALYZE_PARSE_LOOPS", "3"))
+MAX_OUTER_ITERATIONS = int(os.getenv("MAX_OUTER_ITERATIONS", "6"))
+MAX_ANALYZE_PARSE_LOOPS = int(os.getenv("MAX_ANALYZE_PARSE_LOOPS", "6"))
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.75"))
 
 # MLflow Configuration
