@@ -63,6 +63,12 @@ REASON_DECIDE_PROMPT = ChatPromptTemplate.from_messages(
          "- need_more (boolean): true if causal chain incomplete, false if traced to root/external causes\n"
          "- hypotheses (list of strings): Next level causes to investigate (empty if need_more=false)\n"
          "- evidence_requirements (list of strings): Specific log patterns to search for (empty if need_more=false)\n\n"
+         "Example output structure:\n"
+         "{{{{\n"
+         '  "need_more": true,\n'
+         '  "hypotheses": ["hypothesis1", "hypothesis2"],\n'
+         '  "evidence_requirements": ["pattern1", "pattern2"]\n'
+         "}}}}\n\n"
          "Output ONLY valid JSON, no markdown, no explanations."),
         ("user",
          "User Context:\n{user_context}\n\n"
@@ -134,12 +140,13 @@ SUMMARIZE_PROMPT = ChatPromptTemplate.from_messages(
          "- Include the calculation in your thinking but output only the final confidence value\n\n"
          
          "OUTPUT FORMAT (strict JSON):\n"
-         "{\n"
-         "  \"problem\": \"Clear description of what failed and its impact\",\n"
-         "  \"rca\": \"Causal chain with [PROVEN]/[INFERRED] markers and evidence citations\",\n"
-         "  \"mitigation\": \"Concrete actionable steps with Spark configs where applicable\",\n"
-         "  \"confidence\": 0.75\n"
-         "}\n\n"
+         "Example output structure:\n"
+         "{{{{\n"
+         '  "problem": "Clear description of what failed and its impact",\n'
+         '  "rca": "Causal chain with [PROVEN]/[INFERRED] markers and evidence citations",\n'
+         '  "mitigation": "Concrete actionable steps with Spark configs where applicable",\n'
+         '  "confidence": 0.75\n'
+         "}}}}\n\n"
          "Output ONLY valid JSON, no markdown, no additional text."),
         ("user",
          "User Context:\n{user_context}\n\n"
@@ -198,10 +205,11 @@ ANALYZER_PROMPT = ChatPromptTemplate.from_messages(
          "- Too narrow keywords too early (may miss context)\n\n"
          
          "OUTPUT FORMAT (strict JSON):\n"
-         "{\n"
-         "  \"keywords\": [\"keyword1\", \"keyword2\", \"pattern|variant\", \"executor 12\"],\n"
-         "  \"rationale\": \"Using BROAD/NARROW strategy because... These keywords target...\"\n"
-         "}\n\n"
+         "Example output structure:\n"
+         "{{{{\n"
+         '  "keywords": ["keyword1", "keyword2", "pattern|variant", "executor 12"],\n'
+         '  "rationale": "Using BROAD/NARROW strategy because... These keywords target..."\n'
+         "}}}}\n\n"
          "Output ONLY valid JSON, no markdown, no additional text."),
         ("user",
          "User Context:\n{user_context}\n\n"
@@ -278,12 +286,13 @@ CRITIC_PROMPT = ChatPromptTemplate.from_messages(
          "NOT vague statements like 'needs more evidence'\n\n"
          
          "OUTPUT FORMAT (strict JSON):\n"
-         "{\n"
-         "  \"approve\": boolean,\n"
-         "  \"reasons\": \"Detailed justification: evidence validation results, confidence check, chain completeness\",\n"
-         "  \"confidence_adjustment\": 0.0,\n"
-         "  \"missing_evidence\": [\"specific gap 1\", \"specific gap 2\"]\n"
-         "}\n\n"
+         "Example output structure:\n"
+         "{{{{\n"
+         '  "approve": true,\n'
+         '  "reasons": "Detailed justification: evidence validation results, confidence check, chain completeness",\n'
+         '  "confidence_adjustment": 0.0,\n'
+         '  "missing_evidence": ["specific gap 1", "specific gap 2"]\n'
+         "}}}}\n\n"
          "Output ONLY valid JSON, no markdown, no additional text."),
         ("user",
          "Draft RCA:\n{draft}\n\n"
