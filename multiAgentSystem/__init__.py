@@ -12,6 +12,13 @@ from multiAgentSystem.graph import build_graph
 from multiAgentSystem.state import AgentState
 from multiAgentSystem.deps import get_deps
 from multiAgentSystem.pdf_generator import generate_pdf_report, quick_pdf_report
+from multiAgentSystem.log_deduplicator import (
+    deduplicate_grep_results,
+    format_evidence_map_for_prompt,
+    merge_evidence_maps,
+    get_evidence_summary_stats,
+)
+from multiAgentSystem.tools.langchain_tools import log_analysis_tools
 
 # Note: RCAAgent and AGENT are defined in agent_main.ipynb
 # Import them from there if needed in your code
@@ -28,4 +35,10 @@ __all__ = [
     "AGENT_LLM_ENDPOINTS",
     "generate_pdf_report",
     "quick_pdf_report",
+    "deduplicate_grep_results",
+    "format_evidence_map_for_prompt",
+    "merge_evidence_maps",
+    "get_evidence_summary_stats",
+    "log_analysis_tools",
 ]
+

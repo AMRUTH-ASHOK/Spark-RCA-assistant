@@ -10,15 +10,13 @@ from multiAgentSystem.utils import (
     invoke_json,
     format_hypotheses,
     format_evidence,
+    format_evidence_map,
     format_keywords,
 )
 from multiAgentSystem.utils import clip, dedupe_keep_order
 from multiAgentSystem.config import MAX_ANALYZE_PARSE_LOOPS
 from multiAgentSystem.state import AgentState
 from multiAgentSystem.exceptions import StateError
-
-from multiAgentSystem.agents.analyzer import analyzer_llm
-from multiAgentSystem.agents.parser import parser_fn
 
 
 def reasoning_node(state: AgentState) -> AgentState:
@@ -37,6 +35,10 @@ def reasoning_node(state: AgentState) -> AgentState:
     """
     analyze_loops = int(state.get("analyze_parse_loops", 0))
     
+    # Get evidence - prefer evidence_map, fallback to evidence for backward compatibility
+    evidence_map = state.get("evidence_map", {})
+    legacy_evidence = state.get("evidence", [])
+    
     # 1) Assess sufficiency
     decide = invoke_json(
         REASON_DECIDE_PROMPT,
@@ -44,7 +46,7 @@ def reasoning_node(state: AgentState) -> AgentState:
             "user_context": state.get("user_context", ""),
             "logs_path": state.get("logs_path", ""),
             "hypotheses": format_hypotheses(state.get("hypotheses", [])),
-            "evidence": format_evidence(state.get("evidence", [])),
+            "evidence": format_evidence_map(evidence_map) if evidence_map else format_evidence(legacy_evidence),
             "keywords": format_keywords(state.get("keywords", [])),
             "iteration": int(state.get("iteration", 0)),
         },
@@ -57,7 +59,8 @@ def reasoning_node(state: AgentState) -> AgentState:
         new_hypotheses = [str(new_hypotheses)]
     hypotheses = dedupe_keep_order((state.get("hypotheses") or []) + [str(h) for h in new_hypotheses])
 
-    evidence = list(state.get("evidence") or [])
+    # Keep legacy evidence for backward compatibility but prefer evidence_map
+    evidence = list(legacy_evidence)
     keywords = list(state.get("keywords") or [])
     last_logs_chunk = state.get("last_logs_chunk", "") or ""
 
@@ -81,7 +84,7 @@ def reasoning_node(state: AgentState) -> AgentState:
             "user_context": state.get("user_context", ""),
             "logs_path": state.get("logs_path", ""),
             "hypotheses": format_hypotheses(hypotheses),
-            "evidence": format_evidence(evidence),
+            "evidence": format_evidence_map(evidence_map) if evidence_map else format_evidence(evidence),
         },
         agent_name="reasoning"
     )
@@ -99,7 +102,8 @@ def reasoning_node(state: AgentState) -> AgentState:
     return {
         "hypotheses": hypotheses,
         "keywords": keywords,
-        "evidence": evidence,
+        "evidence": evidence,  # Keep legacy for backward compat
+        "evidence_map": evidence_map,  # Add new optimized format
         "last_logs_chunk": last_logs_chunk,
         "analyze_parse_loops": analyze_loops,
         "draft": {"problem": problem, "rca": rca, "mitigation": mitigation},

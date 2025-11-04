@@ -60,8 +60,10 @@ def GC_analyzer_tool(
         s2 = s.strip().lower().replace(",", "")
         if s2.endswith("ms"): return float(s2[:-2])
         if s2.endswith("s"):  return float(s2[:-1]) * 1000.0
-        try: return float(s2)  # assume ms
-        except: return -1.0
+        try:
+            return float(s2)  # assume ms
+        except (ValueError, TypeError):
+            return -1.0
 
     def _q(p: float, xs: List[float]) -> float:
         if not xs: return -1.0

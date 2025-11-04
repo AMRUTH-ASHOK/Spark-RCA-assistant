@@ -86,8 +86,11 @@ def grep_path_tool(
             return True
 
     def open_text_safely(p: Path):
-        try:    return p.open("r", encoding="utf-8", errors="ignore")
-        except: return p.open("r", encoding="latin-1", errors="ignore")
+        try:
+            return p.open("r", encoding="utf-8", errors="ignore")
+        except Exception:
+            # Fallback to latin-1 if UTF-8 fails
+            return p.open("r", encoding="latin-1", errors="ignore")
 
     # -------- pattern prep --------
     if restrict_to_volumes and not str(target).startswith("/Volumes/"):

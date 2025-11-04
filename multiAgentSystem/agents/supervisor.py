@@ -39,7 +39,18 @@ def supervisor_node(state: AgentState) -> AgentState:
     else:
         allowed = ["reasoning"]
 
-    evidence_preview = "\n---\n".join(state.get("evidence", [])[-2:]) if state.get("evidence") else "(none)"
+    # Create evidence preview - prefer evidence_map for token efficiency
+    evidence_map = state.get("evidence_map", {})
+    legacy_evidence = state.get("evidence", [])
+    
+    if evidence_map:
+        from multiAgentSystem.log_deduplicator import get_evidence_summary_stats
+        stats = get_evidence_summary_stats(evidence_map)
+        evidence_preview = f"Evidence: {stats['unique_patterns']} unique patterns, {stats['total_occurrences']} occurrences across {stats['unique_files']} files"
+    elif legacy_evidence:
+        evidence_preview = "\n---\n".join(legacy_evidence[-2:])
+    else:
+        evidence_preview = "(none)"
 
     sup = invoke_json(
         SUPERVISOR_PROMPT,

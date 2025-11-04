@@ -20,7 +20,8 @@ class AgentState(TypedDict, total=False):
     iteration: int
     hypotheses: List[str]
     keywords: List[str]
-    evidence: List[str]
+    evidence: List[str]  # Legacy format - kept for backward compatibility
+    evidence_map: Dict[str, Dict[str, Any]]  # New optimized format: key -> {content, timestamps, count, etc}
     last_logs_chunk: str
     analyzer_satisfied: bool
     last_generated_keywords: List[str]  # Keywords from most recent analyzer run
