@@ -31,7 +31,7 @@ def create_parser_agent():
     Returns:
         LangGraph ReAct agent with log analysis capabilities
     """
-    llm = get_deps().llm
+    llm = get_deps().get_agent_llm("parser")
     
     # Create system prompt for the parser agent
     system_prompt = """You are a Log Parser Agent specialized in analyzing Spark logs for root cause analysis.

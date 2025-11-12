@@ -11,6 +11,7 @@ This wrapper enables:
 See: https://mlflow.org/docs/latest/python_api/mlflow.pyfunc.html#mlflow.pyfunc.ChatAgent
 """
 
+import uuid
 from typing import Any, Generator, Optional
 from langgraph.graph.state import CompiledStateGraph
 
@@ -159,8 +160,9 @@ class RCALangGraphChatAgent(ChatAgent):
         if critique and not critic_approved:
             content += f"\n\n**Critic Feedback:**\n{critique}"
         
-        # Create assistant message
+        # Create assistant message with unique ID
         message = ChatAgentMessage(
+            id=str(uuid.uuid4()),
             role="assistant",
             content=content
         )
@@ -226,10 +228,14 @@ class RCALangGraphChatAgent(ChatAgent):
         # Convert to internal format
         initial_state = self._messages_to_state(messages, custom_inputs)
         
-        # Stream multi-agent execution
+        # Stream multi-agent execution and capture final state
+        final_state = None
         for event in self.agent.stream(initial_state, stream_mode="updates"):
             # Extract node information from event
             for node_name, node_data in event.items():
+                # Update final_state with latest node data
+                final_state = node_data
+                
                 # Create progress update message
                 status_update = f"🔄 **{node_name}** agent processing..."
                 
@@ -256,16 +262,20 @@ class RCALangGraphChatAgent(ChatAgent):
                     if next_action:
                         status_update = f"🎯 **Supervisor** routing to {next_action}"
                 
-                # Yield progress chunk
+                # Yield progress chunk with unique ID
                 yield ChatAgentChunk(
                     delta=ChatAgentMessage(
+                        id=str(uuid.uuid4()),
                         role="assistant",
                         content=status_update
                     )
                 )
         
-        # Get final state and yield final response
-        final_state = self.agent.invoke(initial_state)
+        # Use final state from streaming (don't invoke again!)
+        if final_state is None:
+            # Fallback if streaming didn't complete
+            final_state = self.agent.invoke(initial_state)
+            
         final_response = self._state_to_response(final_state)
         
         # Yield final message as chunk

@@ -135,12 +135,17 @@ def supervisor_router(state: AgentState) -> NodeType:
         
     Returns:
         Next node to execute
+        
+    Note:
+        Supervisor only routes to: reasoning, critic, or __end__
+        It should NEVER route to analyzer directly.
+        Analyzer is only accessed via reasoning agent's internal routing.
     """
     nxt = state.get("next_action", "") or ""
     if nxt == "critic":
         return "critic"
     if nxt == "reasoning":
         return "reasoning"
-    if nxt == "analyzer":
-        return "analyzer"
+    # Note: "analyzer" is not a valid supervisor route
+    # The reasoning agent handles analyzer routing internally
     return "__end__"
