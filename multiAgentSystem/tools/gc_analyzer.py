@@ -6,13 +6,29 @@ This tool parses GC logs and provides structured analysis including:
 - Top pause events
 - Memory usage patterns
 - Formatted tables for visualization
+
+MLflow Tracing: This tool is decorated with @mlflow.trace for observability in Databricks.
 """
 
 import re
 import json
 from typing import List, Dict, Any, Optional
 
+try:
+    import mlflow
+    from mlflow.entities import SpanType
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    # Define a no-op decorator if mlflow is not available
+    def noop_decorator(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator if not args else decorator(args[0])
+    mlflow = type('obj', (object,), {'trace': noop_decorator})
 
+
+@mlflow.trace(span_type=SpanType.TOOL if MLFLOW_AVAILABLE else None, name="gc_analyzer_tool")
 def GC_analyzer_tool(
     log_text: str,
     format: str = "markdown",
@@ -24,6 +40,8 @@ def GC_analyzer_tool(
 ) -> dict:
     """
     Analyzes Garbage Collection logs and provides structured insights.
+
+    This tool is traceable via MLflow for observability in Databricks agent traces.
 
     Arguments:
       log_text: raw GC lines OR your grep output blob (with a JSON array of objects containing line_text,path,line_no).

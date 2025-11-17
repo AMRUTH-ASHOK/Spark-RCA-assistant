@@ -1,344 +1,401 @@
 # Spark RCA Assistant - Multi-Agent System
 
-A sophisticated multi-agent system for performing Root Cause Analysis (RCA) on Apache Spark logs using LangGraph and LLMs.
+A multi-agent system for performing Root Cause Analysis (RCA) on Apache Spark logs using LangGraph and LLMs, optimized for Databricks environments.
 
 ## Overview
 
-This system uses a coordinated team of AI agents to analyze Spark execution logs, identify problems, determine root causes, and suggest mitigation strategies. It's designed to work in Databricks environments and can analyze various Spark failure modes including OOM errors, executor losses, GC issues, and more.
+This system uses a coordinated team of AI agents to analyze Spark execution logs, identify problems, determine root causes, and suggest mitigation strategies. It features intelligent log deduplication, full MLflow tracing, and automated PDF report generation.
+
+## Key Features
+
+- **Multi-Agent Orchestration**: 5 specialized agents working in coordination
+- **Intelligent Evidence Storage**: Automatic log deduplication with occurrence tracking
+- **Full Observability**: MLflow tracing for all tools and agent interactions
+- **Causal Chain Analysis**: Deep root cause drilling with evidence validation
+- **PDF Report Generation**: Automated professional reports
+- **Databricks Optimized**: Native integration with Databricks LLM endpoints
 
 ## Architecture
 
-### Multi-Agent Design
-
-The system employs a **hierarchical multi-agent architecture** with the following specialized agents:
-
-1. **Supervisor Agent** - Orchestrates the overall workflow and decides which agent to invoke next
-2. **Reasoning Agent** - Assesses evidence sufficiency, generates hypotheses, and produces summaries
-3. **Analyzer Agent** - Converts hypotheses into targeted log search keywords
-4. **Parser Agent** - Searches logs using specialized tools (grep, GC analyzer)
-5. **Critic Agent** - Validates draft outputs against collected evidence
-
-### Agent Flow
+### Agent Workflow
 
 ```
 ┌─────────────┐
-│  Supervisor │ (Entry Point)
+│  Supervisor │ ← Entry Point & Orchestration
 └──────┬──────┘
        │
-       ├──> Reasoning ──> Supervisor (bidirectional)
+       ├──> Reasoning ← Hypothesis generation & evidence assessment
        │        │
-       │        ├──> LogAnalyser ──> Reasoning (bidirectional)
-       │                 │
-       │                 └──> LogParser ──> LogAnalyser (bidirectional)
+       │        ├──> Analyzer ← Keyword generation
+       │        │       │
+       │        │       └──> Parser ← Log search with tools
+       │        │              │
+       │        └──────────────┘ (Inner feedback loop)
        │
-       ├──> Critic ──> Supervisor (bidirectional)
+       ├──> Critic ← Validation & quality assurance
        │
-       └──> END
+       └──> END (Generate PDF report)
 ```
 
-## Bidirectional Agent Interactions
+### Agent Roles
 
-The system follows strict bidirectional communication patterns:
-
-1. **Supervisor <-> Reasoning**: Supervisor initiates reasoning cycles; Reasoning returns results to Supervisor
-2. **Supervisor <-> Critic**: Supervisor requests validation; Critic returns approval to Supervisor
-3. **Reasoning <-> LogAnalyser**: Reasoning requests log analysis; LogAnalyser returns keywords to Reasoning
-4. **LogAnalyser <-> LogParser**: LogAnalyser requests log search; LogParser returns evidence to LogAnalyser
+1. **Supervisor Agent** - Orchestrates workflow, manages iterations, generates final PDF
+2. **Reasoning Agent** - Assesses evidence, generates hypotheses, creates RCA drafts
+3. **Analyzer Agent** - Converts hypotheses to search keywords
+4. **Parser Agent** - Searches logs and populates evidence map
+5. **Critic Agent** - Validates claims against evidence
 
 ## Project Structure
 
 ```
 Spark-RCA-assistant/
-├── requirements.txt           # Python dependencies
-└── multiAgentSystem/
-    ├── __init__.py
-    ├── agent_main.ipynb      # Main notebook with RCAAgent class
-    ├── config.py             # Configuration constants
-    ├── deps.py               # Dependency injection
-    ├── exceptions.py         # Custom exceptions
-    ├── graph.py              # LangGraph workflow definition
-    ├── prompts.py            # LLM prompt templates
-    ├── state.py              # Shared state definitions
-    ├── utils.py              # Utility functions
-    ├── agents/               # Agent implementations
-    │   ├── __init__.py
-    │   ├── analyzer.py       # Log Analyzer Agent
-    │   ├── critic.py         # Critic Agent
-    │   ├── parser.py         # Log Parser Agent
-    │   ├── reasoning.py      # Reasoning Agent
-    │   └── supervisor.py     # Supervisor Agent
-    └── tools/                # Specialized analysis tools
-        ├── __init__.py
-        ├── gc_analyzer.py    # GC log analysis tool
-        └── grep_tool.py      # Pattern search tool
+├── README.md
+├── requirements.txt
+├── multiAgentSystem/
+│   ├── agent_main.ipynb          # Main entry point & RCAAgent class
+│   ├── config.py                 # Configuration & constants
+│   ├── deps.py                   # Dependency injection
+│   ├── graph.py                  # LangGraph workflow definition
+│   ├── prompts.py                # LLM prompt templates
+│   ├── state.py                  # Shared state with EvidenceEntry
+│   ├── utils.py                  # Utility functions
+│   ├── evidence_manager.py       # Evidence deduplication & formatting
+│   ├── pdf_generator.py          # PDF report generation
+│   ├── exceptions.py             # Custom exceptions
+│   ├── agents/                   # Agent implementations
+│   │   ├── supervisor.py
+│   │   ├── reasoning.py
+│   │   ├── analyzer.py
+│   │   ├── parser.py
+│   │   └── critic.py
+│   ├── tools/                    # MLflow-traced tools
+│   │   ├── grep_tool.py          # Pattern search with deduplication
+│   │   ├── gc_analyzer.py        # GC log analysis
+│   │   └── pdf_report_tool.py    # PDF generation wrapper
+│   └── Reports/                  # Generated PDF reports
+└── examples/                     # Example scripts
 ```
 
 ## Key Components
 
-### State Management (`state.py`)
+### Evidence Storage (NEW)
 
-The system uses a shared `AgentState` TypedDict that flows through all agents:
+The system uses an optimized evidence storage structure that eliminates duplicate log entries:
 
-- **Inputs**: `user_context`, `logs_path`
-- **Working Memory**: `hypotheses`, `keywords`, `evidence`, `last_logs_chunk`
-- **Draft & Quality**: `draft`, `confidence`, `critic_approved`, `critique`
-- **Control Flow**: `last_status`, `next_action`, `supervisor_rationale`
-- **Counters**: `iteration`, `analyze_parse_loops`
-
-### Configuration (`config.py`)
-
-Key configuration parameters:
-
-- `LLM_ENDPOINT_NAME`: Databricks LLM endpoint (default: "databricks-claude-3-7-sonnet")
-- `MAX_OUTER_ITERATIONS`: Maximum supervisor-level iterations (default: 3)
-- `MAX_ANALYZE_PARSE_LOOPS`: Maximum analyzer-parser mini-loops (default: 3)
-- `CONFIDENCE_THRESHOLD`: Minimum confidence to finish (default: 0.75)
-
-### Tools (`tools/`)
-
-1. **grep_tool.py**: file search with regex support
-   - Multi-pattern search (AND/OR logic)
-   - Hidden file handling
-   - Binary file detection
-   - Result limiting and formatting
-
-2. **gc_analyzer.py**: GC log parser
-   - Parses GC pause events
-   - Calculates statistics (p50, p95, p99 pauses)
-   - Identifies STW (Stop-The-World) events
-   - Tracks memory freed and heap usage
-
-## Control Flow
-
-### 1. Entry Phase
-```
-User Request -> Supervisor -> Reasoning Agent
+```python
+# Evidence Map Structure
+evidence_map = {
+    "OutOfMemoryError: Java heap space": {
+        "count": 15,                      # Total occurrences
+        "timestamps": ["25/10/08 06:23:27", ...],
+        "files": ["/Volumes/logs/executor-1.log", ...],
+        "sample_lines": ["Full log line 1", "Full log line 2"]
+    },
+    "Executor lost failure": {
+        "count": 3,
+        "timestamps": [...],
+        "files": [...],
+        "sample_lines": [...]
+    }
+}
 ```
 
-### 2. Evidence Gathering Phase
-```
-Reasoning (need_more=true) -> LogAnalyser -> LogParser -> LogAnalyser -> Reasoning (reassess)
-```
-This loop continues up to `MAX_ANALYZE_PARSE_LOOPS` times until:
-- Evidence is sufficient, OR
-- Maximum loops reached
+**Benefits:**
+- Automatic deduplication by error pattern
+- Occurrence counting
+- Timestamp and file tracking
+- Memory efficient (stores samples, not all duplicates)
+- Better LLM context through summaries
 
-### 3. Draft Creation Phase
-```
-Reasoning (sufficient evidence) -> [Creates Draft] -> Supervisor
-```
+### MLflow Tracing
 
-### 4. Validation Phase
-```
-Supervisor -> Critic -> [Validates Draft] -> Supervisor
-```
+All tools are decorated with `@mlflow.trace` for full observability:
 
-### 5. Termination Phase
-```
-Supervisor decides:
-- END if: critic_approved AND confidence >= threshold
-- END if: iteration >= MAX_OUTER_ITERATIONS
-- Reasoning again if: more analysis needed
-```
+- **grep_path_tool**: Search patterns and results traced
+- **gc_analyzer_tool**: GC analysis steps traced
+- **generate_rca_report_tool**: PDF generation traced
 
-## Data Flow
+View traces in Databricks MLflow UI → Traces tab
 
-### Input Flow
-```
-User Request
-    |-- user_context (problem description)
-    +-- logs_path (path to Spark logs)
-        |
-        v
-    Initial State
-        |
-        v
-    Supervisor
-```
+### Configuration
 
-### Evidence Collection Flow
-```
-Hypotheses -> LogAnalyser -> Keywords -> LogParser -> Log Evidence
-                                                        |
-                                                        v
-                                                   (appended to state.evidence)
-                                                        |
-                                                        v
-                                                   LogAnalyser -> Reasoning (reassess)
-```
+Edit `config.py` or use environment variables:
 
-### Output Flow
-```
-Final State
-    |-- draft
-    |   |-- problem (description)
-    |   |-- rca (root cause analysis)
-    |   +-- mitigation (suggested fixes)
-    |-- confidence (0.0 - 1.0)
-    |-- keywords (used for search)
-    |-- evidence (collected log snippets)
-    |-- critic_approved (boolean)
-    +-- critique (feedback from critic)
+```python
+# LLM Configuration
+LLM_ENDPOINT_NAME = "databricks-claude-3-7-sonnet"
+
+# Loop Control
+MAX_OUTER_ITERATIONS = 6          # Supervisor cycles
+MAX_ANALYZE_PARSE_LOOPS = 6       # Evidence gathering loops
+CONFIDENCE_THRESHOLD = 0.75       # Minimum confidence to finish
+
+# Default search keywords (always included)
+DEFAULT_KEYWORDS = [
+    "ERROR",
+    "Exception",
+    "Executor lost",
+    "OutOfMemoryError",
+    "GC overhead",
+    "Container exited"
+]
 ```
 
 ## Usage
 
-### In Databricks Notebook
+### Quick Start (Databricks Notebook)
 
 ```python
 # 1. Install dependencies
 %pip install -r requirements.txt
 dbutils.library.restartPython()
 
-# 2. Run the RCAAgent definition cell in agent_main.ipynb
-
-# 3. Use the AGENT instance
+# 2. Import the agent
 from multiAgentSystem.agent_main import AGENT
 
+# 3. Run analysis
 request = {
-    "user_context": "Job failed with executor lost errors during shuffle",
-    "logs_path": "/Volumes/catalog/schema/spark-logs/job-123/"
+    "user_context": "Job failed with executor losses during shuffle phase",
+    "logs_path": "/Volumes/catalog/schema/spark-logs/job-12345/"
 }
 
 result = AGENT.predict(request)
 
-# Access results
-print(result["output"]["problem"])
-print(result["output"]["rca"])
-print(result["output"]["mitigation"])
+# 4. Access results
+print("Problem:", result["output"]["problem"])
+print("Root Cause:", result["output"]["rca"])
+print("Mitigation:", result["output"]["mitigation"])
+print(f"Confidence: {result['output']['confidence']:.2f}")
+print(f"PDF Report: {result['output']['pdf_report_path']}")
+```
+
+### Access Evidence Map (NEW)
+
+```python
+# View deduplicated evidence
+evidence_map = result["output"]["evidence_map"]
+
+for pattern, entry in evidence_map.items():
+    print(f"\n{pattern}:")
+    print(f"  Occurrences: {entry['count']}")
+    print(f"  First seen: {entry['timestamps'][0] if entry['timestamps'] else 'N/A'}")
+    print(f"  Files: {', '.join(entry['files'][:3])}")
 ```
 
 ### Streaming Mode
 
 ```python
 for event in AGENT.predict_stream(request):
-    print(f"{event['type']}: {event['node']}")
-    if event['type'] == 'final':
-        print(event['data'])
+    if event['type'] == 'node':
+        print(f"Running: {event['node']}")
+    elif event['type'] == 'final':
+        result = event['data']
 ```
 
-## Configuration via Environment Variables
+## How It Works
+
+### Phase 1: Evidence Collection
+
+The system iteratively searches logs and builds the evidence map:
+
+1. **Reasoning** generates hypotheses (e.g., "OOM caused executor failure")
+2. **Analyzer** converts to keywords (e.g., "OutOfMemoryError", "executor lost")
+3. **Parser** searches logs and updates evidence_map
+4. **Reasoning** reassesses with new evidence
+
+This loop continues until sufficient evidence is gathered (max 6 iterations).
+
+### Phase 2: Draft Creation
+
+**Reasoning** agent creates the RCA draft:
+
+```
+Draft = {
+  "problem": "Clear problem description",
+  "rca": "Causal chain with [PROVEN] or [INFERRED] markers",
+  "mitigation": "Actionable steps with Spark configs"
+}
+```
+
+**Confidence Calculation:**
+```
+confidence = proven_statements / total_statements
+```
+
+### Phase 3: Validation
+
+**Critic** agent validates the draft:
+- Checks each [PROVEN] claim has supporting evidence
+- Verifies confidence calculation
+- Validates causal chain logic
+- Adjusts confidence if needed
+
+### Phase 4: Termination
+
+**Supervisor** decides to:
+- **End** if: approved AND confidence ≥ 0.75
+- **End** if: max iterations reached
+- **Continue** if: more analysis needed
+
+On termination, generates PDF report automatically.
+
+## Output Structure
+
+```python
+result = {
+    "output": {
+        "problem": str,              # Problem description
+        "rca": str,                  # Root cause analysis
+        "mitigation": str,           # Suggested fixes
+        "confidence": float,         # 0.0-1.0
+        "iterations": int,           # Cycles completed
+
+        # NEW: Evidence map
+        "evidence_map": {
+            "error_pattern": {
+                "count": int,
+                "timestamps": List[str],
+                "files": List[str],
+                "sample_lines": List[str]
+            }
+        },
+        "evidence_summary": str,     # Formatted for reading
+
+        # Legacy
+        "evidence": List[str],       # Raw evidence list
+
+        # Metadata
+        "keywords": List[str],       # Keywords used
+        "critic_approved": bool,
+        "critique": str,
+        "pdf_report_path": str       # Path to PDF
+    }
+}
+```
+
+## Advanced Configuration
+
+### Environment Variables
 
 ```bash
 export LLM_ENDPOINT_NAME="databricks-claude-3-7-sonnet"
-export MAX_OUTER_ITERATIONS="3"
-export MAX_ANALYZE_PARSE_LOOPS="3"
+export MAX_OUTER_ITERATIONS="6"
+export MAX_ANALYZE_PARSE_LOOPS="6"
 export CONFIDENCE_THRESHOLD="0.75"
-export MLFLOW_ENABLED="true"
+
+# Per-agent LLM endpoints (optional)
+export REASONING_LLM_ENDPOINT="custom-endpoint"
+export ANALYZER_LLM_ENDPOINT="custom-endpoint"
+export PARSER_LLM_ENDPOINT="custom-endpoint"
+export CRITIC_LLM_ENDPOINT="custom-endpoint"
+export SUPERVISOR_LLM_ENDPOINT="custom-endpoint"
 ```
 
-## Agent Details
+### Customizing Prompts
 
-### Supervisor Agent
-- **Role**: Orchestration and decision-making
-- **Inputs**: Current state, iteration count, confidence level
-- **Outputs**: `next_action` (reasoning/critic/end)
-- **Logic**: Enforces iteration limits, confidence thresholds, validation requirements
-- **Interactions**: Bidirectional with Reasoning and Critic
+Edit `multiAgentSystem/prompts.py` to customize agent behavior:
 
-### Reasoning Agent
-- **Role**: Hypothesis generation and evidence assessment
-- **Inputs**: User context, current hypotheses, evidence
-- **Outputs**: 
-  - If insufficient: triggers LogAnalyser with refined hypotheses
-  - If sufficient: produces draft (problem/RCA/mitigation)
-- **Logic**: Uses LLM to assess evidence sufficiency, generates/refines hypotheses
-- **Interactions**: Bidirectional with Supervisor and LogAnalyser
+- `REASON_DECIDE_PROMPT` - Evidence assessment logic
+- `SUMMARIZE_PROMPT` - RCA draft format
+- `ANALYZER_PROMPT` - Keyword generation strategy
+- `CRITIC_PROMPT` - Validation criteria
+- `SUPERVISOR_PROMPT` - Orchestration logic
 
-### LogAnalyser Agent (Analyzer)
-- **Role**: Converts hypotheses to search keywords
-- **Inputs**: Hypotheses, user context, existing keywords
-- **Outputs**: Focused list of 3-8 keywords for log search
-- **Logic**: Uses domain knowledge to identify high-signal terms (error codes, exception types, etc.)
-- **Interactions**: Bidirectional with Reasoning and LogParser
+## Tools
 
-### LogParser Agent (Parser)
-- **Role**: Log search and extraction
-- **Inputs**: Logs path, keywords
-- **Outputs**: Relevant log snippets
-- **Tools**: 
-  - grep_path_tool for pattern matching
-  - GC_analyzer_tool for GC-specific analysis
-- **Logic**: Detects GC-related issues and routes to appropriate tool
-- **Interactions**: Bidirectional with LogAnalyser
+### grep_path_tool
 
-### Critic Agent
-- **Role**: Quality assurance
-- **Inputs**: Draft, evidence
-- **Outputs**: `approve` (bool), `reasons` (string), `confidence_adjustment` (-0.25 to +0.25)
-- **Logic**: Validates that claims in draft are supported by evidence
-- **Interactions**: Bidirectional with Supervisor
+Pattern search with advanced features:
+- Regex support
+- AND/OR logic
+- Automatic deduplication
+- MLflow traced
 
-## Loop Control Mechanisms
+### gc_analyzer_tool
 
-1. **Outer Loop** (Supervisor-level)
-   - Controlled by `iteration` counter
-   - Maximum: `MAX_OUTER_ITERATIONS` (default: 3)
-   - Each reasoning cycle increments this
+GC log parser:
+- Parses pause events
+- Calculates p50/p95/p99 statistics
+- Identifies Stop-The-World events
+- Memory analysis
+- MLflow traced
 
-2. **Inner Loop** (LogAnalyser-LogParser)
-   - Controlled by `analyze_parse_loops` counter
-   - Maximum: `MAX_ANALYZE_PARSE_LOOPS` (default: 3)
-   - Each LogAnalyser run increments this
-   - Resets implicitly on next outer iteration
+### generate_rca_report_tool
 
-3. **Confidence Threshold**
-   - System terminates when `confidence >= CONFIDENCE_THRESHOLD` AND `critic_approved = true`
-   - Default threshold: 0.75
-
-## Error Handling
-
-The system includes comprehensive error handling:
-
-- **LLMError**: LLM invocation failures
-- **ConfigurationError**: Invalid configuration
-- **StateError**: Invalid state transitions
-- **GraphError**: Graph execution failures
-
-All tools return graceful error messages rather than raising exceptions, ensuring the workflow continues even if individual operations fail.
-
-## MLflow Integration
-
-When running in Databricks with MLflow available:
-- Automatic logging of LangChain operations
-- Model registration via `mlflow.models.set_model()`
-- Trace tracking for debugging
+PDF generator:
+- Professional formatting
+- Includes evidence and metadata
+- Timestamped filenames
+- MLflow traced
 
 ## Dependencies
 
-Key dependencies (see `requirements.txt`):
-- `langgraph-supervisor==0.0.29` - Multi-agent orchestration
-- `mlflow[databricks]` - Experiment tracking
-- `databricks-langchain` - LLM integration
-- `databricks-agents` - Agent framework
+```
+langgraph-supervisor==0.0.29    # Multi-agent orchestration
+mlflow[databricks]              # Experiment tracking & tracing
+databricks-langchain            # LLM integration
+databricks-agents               # Agent framework
+reportlab                       # PDF generation
+```
 
 ## Best Practices
 
-1. **Provide Clear Context**: The more specific the `user_context`, the better the analysis
-2. **Use Valid Paths**: Ensure `logs_path` points to actual Spark logs
-3. **Tune Configuration**: Adjust iterations and confidence based on complexity
-4. **Review Evidence**: Check `result["output"]["evidence"]` to understand reasoning
-5. **Monitor Iterations**: High iteration counts may indicate unclear context
+1. **Provide Specific Context**: Include job IDs, query IDs, failure timestamps
+2. **Use Correct Log Paths**: Point to `/Volumes/` directory with Spark logs
+3. **Review Evidence Map**: Check occurrence counts to understand failure patterns
+4. **Monitor Confidence**: Low confidence may indicate insufficient logs or unclear issue
+5. **Check PDF Reports**: Stored in `multiAgentSystem/Reports/` directory
+
+## Troubleshooting
+
+### Low Confidence (<0.5)
+- Provide more specific user_context
+- Ensure logs_path contains relevant logs
+- Check if logs have actual error messages
+
+### No Evidence Found
+- Verify logs_path is correct
+- Check log format (must be text files)
+- Ensure logs contain error keywords
+
+### High Iterations
+- May indicate complex multi-stage failure
+- Review hypotheses in output to understand investigation path
+- Consider providing more initial context
 
 ## Limitations
 
-- Requires access to Databricks LLM endpoints
-- Works best with structured Spark logs
-- Quality depends on LLM capabilities
-- May require multiple iterations for complex issues
+- Requires Databricks environment with LLM endpoints
+- Works with text-based Spark logs (not binary formats)
+- Limited to logs in `/Volumes/` directory
+- Quality depends on log detail and LLM capabilities
 
-## Future Enhancements
+## Recent Updates
 
-- Add support for additional log formats
-- Implement caching for repeated analyses
-- Add visualization of agent decision flow
-- Support for batch processing multiple log sets
-- Custom tool integration framework
+### v2.0 (Latest)
+- ✅ Optimized evidence storage with deduplication
+- ✅ MLflow tracing for all tools
+- ✅ Evidence occurrence tracking
+- ✅ Timestamp and file path tracking
+- ✅ Memory-efficient sample storage
+- ✅ Backward compatibility maintained
+
+### v1.0
+- Initial multi-agent implementation
+- Basic evidence collection
+- PDF report generation
 
 ## License
 
-[Add your license information here]
+[Add your license information]
 
-## Contact
+## Support
 
-[Add contact information here]
+For issues or questions:
+- Check Databricks documentation
+- Review MLflow traces for debugging
+- Examine generated PDF reports
+
+---
+
+**Built with LangGraph, MLflow, and Databricks Agent Framework**

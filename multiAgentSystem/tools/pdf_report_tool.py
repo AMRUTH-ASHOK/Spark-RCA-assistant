@@ -2,6 +2,8 @@
 PDF Report Generation Tool
 
 This tool generates a formatted PDF report from the RCA analysis results.
+
+MLflow Tracing: This tool is decorated with @mlflow.trace for observability in Databricks.
 """
 
 import os
@@ -9,7 +11,21 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from multiAgentSystem.pdf_generator import generate_pdf_report
 
+try:
+    import mlflow
+    from mlflow.entities import SpanType
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    # Define a no-op decorator if mlflow is not available
+    def noop_decorator(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator if not args else decorator(args[0])
+    mlflow = type('obj', (object,), {'trace': noop_decorator})
 
+
+@mlflow.trace(span_type=SpanType.TOOL if MLFLOW_AVAILABLE else None, name="generate_rca_report_tool")
 def generate_rca_report_tool(
     output_data: Dict[str, Any],
     reports_dir: str = None,
@@ -17,18 +33,20 @@ def generate_rca_report_tool(
 ) -> str:
     """
     Generate a timestamped PDF report from RCA analysis results.
-    
+
+    This tool is traceable via MLflow for observability in Databricks agent traces.
+
     This tool is called by the supervisor agent before returning final output
     to create a permanent record of the analysis.
-    
+
     Args:
         output_data: The analysis results containing problem, rca, mitigation, etc.
         reports_dir: Directory to save reports (default: multiAgentSystem/Reports/)
         base_filename: Base name for the report file (default: "rca_report")
-        
+
     Returns:
         Absolute path to the generated PDF report
-        
+
     Raises:
         Exception: If PDF generation fails
     """

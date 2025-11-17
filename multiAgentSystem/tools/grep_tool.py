@@ -4,6 +4,8 @@ Grep Path Tool for searching files for patterns.
 This tool provides a powerful file search capability for finding patterns in log files
 and other text files. It supports multiple search patterns with AND/OR logic, and can
 return detailed information about matches.
+
+MLflow Tracing: This tool is decorated with @mlflow.trace for observability in Databricks.
 """
 
 import os
@@ -12,7 +14,21 @@ import json
 from pathlib import Path
 from typing import List, Tuple, Union, Iterator, Optional, Sequence
 
+try:
+    import mlflow
+    from mlflow.entities import SpanType
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    # Define a no-op decorator if mlflow is not available
+    def noop_decorator(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator if not args else decorator(args[0])
+    mlflow = type('obj', (object,), {'trace': noop_decorator})
 
+
+@mlflow.trace(span_type=SpanType.TOOL if MLFLOW_AVAILABLE else None, name="grep_path_tool")
 def grep_path_tool(
     target: Union[str, os.PathLike],
     pattern: Optional[str] = None,                 # single pattern (legacy)
@@ -32,6 +48,8 @@ def grep_path_tool(
 ) -> str:
     """
     Search files under a path for one or more patterns.
+
+    This tool is traceable via MLflow for observability in Databricks agent traces.
 
     Args:
         target: Path to search in

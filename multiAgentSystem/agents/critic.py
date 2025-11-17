@@ -15,18 +15,24 @@ from multiAgentSystem.state import AgentState
 def critic_node(state: AgentState) -> AgentState:
     """
     Critic validates draft vs evidence and nudges confidence.
-    
+
     Args:
         state: Current agent state
-        
+
     Returns:
         Updated state with critic feedback
     """
+    # Use evidence_summary if available (new format), otherwise fallback to evidence list
+    evidence_for_prompt = state.get("evidence_summary")
+    if not evidence_for_prompt:
+        evidence_list = state.get("evidence", [])
+        evidence_for_prompt = "\n---\n".join(evidence_list) if evidence_list else "(none)"
+
     data = invoke_json(
         CRITIC_PROMPT,
         {
             "draft": json.dumps(state.get("draft", {}), ensure_ascii=False),
-            "evidence": "\n---\n".join(state.get("evidence", [])) if state.get("evidence") else "(none)",
+            "evidence": evidence_for_prompt,
         },
         agent_name="critic"
     )

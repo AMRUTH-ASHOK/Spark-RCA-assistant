@@ -38,13 +38,16 @@ def reasoning_node(state: AgentState) -> AgentState:
     analyze_loops = int(state.get("analyze_parse_loops", 0))
     
     # 1) Assess sufficiency
+    # Use evidence_summary if available (new format), otherwise fallback to evidence list
+    evidence_for_prompt = state.get("evidence_summary") or format_evidence(state.get("evidence", []))
+
     decide = invoke_json(
         REASON_DECIDE_PROMPT,
         {
             "user_context": state.get("user_context", ""),
             "logs_path": state.get("logs_path", ""),
             "hypotheses": format_hypotheses(state.get("hypotheses", [])),
-            "evidence": format_evidence(state.get("evidence", [])),
+            "evidence": evidence_for_prompt,
             "keywords": format_keywords(state.get("keywords", [])),
             "iteration": int(state.get("iteration", 0)),
         },
@@ -75,13 +78,16 @@ def reasoning_node(state: AgentState) -> AgentState:
         }
 
     # 3) Either evidence is sufficient OR we've hit max loops → summarize
+    # Use evidence_summary if available (new format), otherwise fallback to evidence list
+    evidence_for_summary = state.get("evidence_summary") or format_evidence(evidence)
+
     summary = invoke_json(
         SUMMARIZE_PROMPT,
         {
             "user_context": state.get("user_context", ""),
             "logs_path": state.get("logs_path", ""),
             "hypotheses": format_hypotheses(hypotheses),
-            "evidence": format_evidence(evidence),
+            "evidence": evidence_for_summary,
         },
         agent_name="reasoning"
     )

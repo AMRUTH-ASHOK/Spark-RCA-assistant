@@ -9,9 +9,17 @@ from __future__ import annotations
 from typing import TypedDict, List, Dict, Any, Optional, Literal
 
 
+class EvidenceEntry(TypedDict):
+    """Evidence entry with occurrence tracking and metadata."""
+    count: int                    # Number of occurrences
+    timestamps: List[str]         # All timestamps where it occurred
+    files: List[str]             # File paths where it occurred (unique)
+    sample_lines: List[str]      # Keep 2-3 full sample log lines for context
+
+
 class AgentState(TypedDict, total=False):
     """State object shared between all agents in the system."""
-    
+
     # Inputs
     user_context: str
     logs_path: str
@@ -20,7 +28,14 @@ class AgentState(TypedDict, total=False):
     iteration: int
     hypotheses: List[str]
     keywords: List[str]
+
+    # Evidence storage - NEW optimized structure
+    evidence_map: Dict[str, EvidenceEntry]  # error_pattern -> EvidenceEntry
+    evidence_summary: str                   # Formatted string for LLM consumption
+
+    # Deprecated - kept for backward compatibility
     evidence: List[str]
+
     last_logs_chunk: str
     analyzer_satisfied: bool
     last_generated_keywords: List[str]  # Keywords from most recent analyzer run

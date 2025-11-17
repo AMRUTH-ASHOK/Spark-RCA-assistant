@@ -39,7 +39,11 @@ def supervisor_node(state: AgentState) -> AgentState:
     else:
         allowed = ["reasoning"]
 
-    evidence_preview = "\n---\n".join(state.get("evidence", [])[-2:]) if state.get("evidence") else "(none)"
+    # Use evidence_summary if available, otherwise use last 2 evidence entries for preview
+    evidence_preview = state.get("evidence_summary")
+    if not evidence_preview:
+        evidence_list = state.get("evidence", [])
+        evidence_preview = "\n---\n".join(evidence_list[-2:]) if evidence_list else "(none)"
 
     sup = invoke_json(
         SUPERVISOR_PROMPT,
@@ -51,7 +55,7 @@ def supervisor_node(state: AgentState) -> AgentState:
             "critic_approved": critic_approved,
             "critique": state.get("critique", "") or "(none)",
             "draft": json.dumps(state.get("draft", {}), ensure_ascii=False) if state.get("draft") else "(none)",
-            "evidence": evidence_preview,
+            "evidence": evidence_preview[:1000] if evidence_preview else "(none)",  # Truncate for prompt
         },
         agent_name="supervisor"
     )
