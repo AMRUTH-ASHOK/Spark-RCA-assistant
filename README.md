@@ -385,17 +385,5 @@ reportlab                       # PDF generation
 - Basic evidence collection
 - PDF report generation
 
-## License
-
-[Add your license information]
-
-## Support
-
-For issues or questions:
-- Check Databricks documentation
-- Review MLflow traces for debugging
-- Examine generated PDF reports
-
 ---
 
-**Built with LangGraph, MLflow, and Databricks Agent Framework**
