@@ -43,9 +43,9 @@ def supervisor_node(state: AgentState) -> AgentState:
     evidence_map = state.get("evidence_map", {})
     
     if evidence_map:
-        from multiAgentSystem.log_deduplicator import get_evidence_summary_stats
-        stats = get_evidence_summary_stats(evidence_map)
-        evidence_preview = f"Evidence: {stats['unique_patterns']} unique patterns, {stats['total_occurrences']} occurrences across {stats['unique_files']} files"
+        from multiAgentSystem.evidence_manager import get_evidence_stats
+        stats = get_evidence_stats(evidence_map)
+        evidence_preview = f"Evidence: {stats['total_unique_patterns']} unique patterns, {stats['total_occurrences']} occurrences across {stats['total_files']} files"
     else:
         evidence_preview = "(none)"
 
@@ -102,7 +102,6 @@ def supervisor_node(state: AgentState) -> AgentState:
                 "confidence": confidence,
                 "iterations": new_iteration,
                 "keywords": state.get("keywords", []),
-                "keywords": state.get("keywords", []),
                 "evidence_map": state.get("evidence_map", {}),
                 "critic_approved": critic_approved,
                 "critique": state.get("critique", "")
@@ -133,17 +132,12 @@ def supervisor_router(state: AgentState) -> NodeType:
         
     Returns:
         Next node to execute
-        
-    Note:
-        Supervisor only routes to: reasoning, critic, or __end__
-        It should NEVER route to analyzer directly.
-        Analyzer is only accessed via reasoning agent's internal routing.
     """
     nxt = state.get("next_action", "") or ""
     if nxt == "critic":
         return "critic"
     if nxt == "reasoning":
         return "reasoning"
-    # Note: "analyzer" is not a valid supervisor route
-    # The reasoning agent handles analyzer routing internally
+    if nxt == "analyzer":
+        return "analyzer"
     return "__end__"

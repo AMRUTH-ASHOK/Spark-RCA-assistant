@@ -76,9 +76,6 @@ def extract_timestamp(log_line: str) -> Optional[str]:
 
     return None
 
-
-    return message, []  # TODO: Return extracted variables in next step
-    
     
 def normalize_error_pattern(message: str) -> tuple[str, List[str]]:
     """
@@ -159,7 +156,6 @@ def add_evidence_to_map(
         evidence_map[error_pattern] = {
             "count": 0,
             "timestamps": [],
-            "files": [],
             "files": [],
             "sample_lines": [],
             "variables": []

@@ -6,7 +6,6 @@ from langgraph.graph import StateGraph, END
 from multiAgentSystem.state import AgentState
 from multiAgentSystem.agents import (
     supervisor_node,
-    supervisor_router,
     reasoning_node,
     analyzer_node,
     parser_node,
@@ -42,6 +41,15 @@ def build_graph():
     g.set_entry_point("supervisor")
     
     # Supervisor conditional routing
+    def supervisor_router(state: AgentState) -> str:
+        """Route from supervisor: to reasoning, critic, or end."""
+        nxt = state.get("next_action", "") or ""
+        if nxt == "critic":
+            return "critic"
+        if nxt == "reasoning":
+            return "reasoning"
+        return "__end__"
+    
     g.add_conditional_edges(
         "supervisor", 
         supervisor_router, 
