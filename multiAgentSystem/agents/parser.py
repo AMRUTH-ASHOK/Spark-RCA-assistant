@@ -14,7 +14,10 @@ from langchain_core.runnables import RunnableLambda
 from langgraph.prebuilt import create_react_agent
 
 from multiAgentSystem.deps import get_deps
-from multiAgentSystem.tools.langchain_tools import log_analysis_tools
+from multiAgentSystem.tools.grep_tool import grep_path_tool
+from multiAgentSystem.tools.gc_analyzer import GC_analyzer_tool
+
+log_analysis_tools = [grep_path_tool, GC_analyzer_tool]
 from multiAgentSystem.state import AgentState
 from multiAgentSystem.log_deduplicator import (
     deduplicate_grep_results,
