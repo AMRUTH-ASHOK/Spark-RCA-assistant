@@ -10,8 +10,7 @@ The agent outputs evidence in a deduplicated format to optimize token usage.
 
 import json
 from typing import List, Dict, Any
-from langchain_core.runnables import RunnableLambda
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.prebuilt import create_react_agent
 
 from multiAgentSystem.deps import get_deps
@@ -34,7 +33,7 @@ def create_parser_agent():
     Returns:
         LangGraph ReAct agent with log analysis capabilities
     """
-    llm = get_deps().llm
+    llm = get_deps().get_agent_llm("parser")
     
     # Create system prompt for the parser agent
     system_prompt = """You are a Log Parser Agent specialized in analyzing Spark logs for root cause analysis.
@@ -66,11 +65,15 @@ Always provide:
 - Summary of key findings
 """
     
+    # Create the agent with just model and tools
+    # System prompt will be included in the messages when invoking
     agent = create_react_agent(
         llm,
-        tools=log_analysis_tools,
-        messages_modifier=SystemMessage(content=system_prompt)
+        tools=log_analysis_tools
     )
+    
+    # Store the system prompt for use during invocation
+    agent.system_prompt = system_prompt
     
     return agent
 
@@ -121,8 +124,10 @@ def parser_node(state: AgentState) -> AgentState:
             "sample_lines": ["[ERROR] No logs path provided. Please provide a valid logs path to analyze."],
             "variables": []
         }
+        error_summary = format_evidence_for_llm(evidence_map, max_patterns=10)
         return {
             "evidence_map": evidence_map,
+            "evidence_summary": error_summary,
             "last_logs_chunk": "Error: No logs path provided",
             "last_generated_keywords": []
         }
@@ -137,31 +142,33 @@ def parser_node(state: AgentState) -> AgentState:
             "sample_lines": [f"[ERROR] No keywords provided for search. Path: {logs_path}"],
             "variables": []
         }
+        error_summary = format_evidence_for_llm(evidence_map, max_patterns=10)
         return {
             "evidence_map": evidence_map,
+            "evidence_summary": error_summary,
             "last_logs_chunk": "Error: No keywords provided",
             "last_generated_keywords": []
         }
     
     try:
         # Create input for the parser agent
+        agent = get_parser_agent()
+        
+        # Prepare messages with system prompt
         agent_input = {
             "messages": [
-                {
-                    "role": "user",
-                    "content": f"""Analyze Spark logs to find evidence for the following investigation:
+                SystemMessage(content=agent.system_prompt),
+                HumanMessage(content=f"""Analyze Spark logs to find evidence for the following investigation:
 
 Logs Path: {logs_path}
 Keywords to search: {', '.join(kw)}
 
 Task: Use the available tools to search the logs and extract relevant evidence.
-Decide which tool(s) to use based on the keywords and what you find."""
-                }
+Decide which tool(s) to use based on the keywords and what you find.""")
             ]
         }
         
         # Invoke the parser agent
-        agent = get_parser_agent()
         result = agent.invoke(agent_input)
         
         # Extract the agent's findings from messages
@@ -210,11 +217,12 @@ Decide which tool(s) to use based on the keywords and what you find."""
                 "variables": []
             }
         
-        # Format a summary for last_logs_chunk
+        # Format a summary for last_logs_chunk and evidence_summary
         summary = format_evidence_for_llm(evidence_map, max_patterns=10)
         
         return {
             "evidence_map": evidence_map,
+            "evidence_summary": summary,
             "last_logs_chunk": summary,
             "last_generated_keywords": [],
         }
@@ -236,8 +244,11 @@ Decide which tool(s) to use based on the keywords and what you find."""
             "variables": []
         }
         
+        error_summary = format_evidence_for_llm(evidence_map, max_patterns=10)
+        
         return {
             "evidence_map": evidence_map,
+            "evidence_summary": error_summary,
             "last_logs_chunk": error_content,
             "last_generated_keywords": []
         }
