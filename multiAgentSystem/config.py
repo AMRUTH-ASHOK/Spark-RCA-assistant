@@ -108,6 +108,10 @@ MAX_OUTER_ITERATIONS = int(os.getenv("MAX_OUTER_ITERATIONS", "6"))
 MAX_ANALYZE_PARSE_LOOPS = int(os.getenv("MAX_ANALYZE_PARSE_LOOPS", "6"))
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.75"))
 
+# Graph recursion limit - controls max iterations through the agent workflow
+# Increase this if you get GraphRecursionError for complex analyses
+GRAPH_RECURSION_LIMIT = int(os.getenv("GRAPH_RECURSION_LIMIT", "200"))
+
 # MLflow Configuration
 MLFLOW_ENABLED = os.getenv("MLFLOW_ENABLED", "true").lower() == "true"
 
