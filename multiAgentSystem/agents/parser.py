@@ -11,6 +11,7 @@ The agent outputs evidence in a deduplicated format to optimize token usage.
 import json
 from typing import List, Dict, Any
 from langchain_core.runnables import RunnableLambda
+from langchain_core.messages import SystemMessage
 from langgraph.prebuilt import create_react_agent
 
 from multiAgentSystem.deps import get_deps
@@ -68,7 +69,7 @@ Always provide:
     agent = create_react_agent(
         llm,
         tools=log_analysis_tools,
-        state_modifier=system_prompt
+        messages_modifier=SystemMessage(content=system_prompt)
     )
     
     return agent
