@@ -72,7 +72,9 @@ def build_graph():
     # Analyzer (LogAnalyser) routing
     def analyzer_router(state: AgentState) -> str:
         """Route from analyzer: to parser or back to reasoning."""
-        # Analyzer always goes to parser first
+        # If analyzer is satisfied or max loops reached, go back to reasoning
+        if state.get("analyzer_satisfied", False):
+            return "reasoning"
         return "parser"
     
     g.add_conditional_edges(
@@ -80,20 +82,20 @@ def build_graph():
         analyzer_router,
         {
             "parser": "parser",
+            "reasoning": "reasoning",
         }
     )
     
     # Parser (LogParser) routing
     def parser_router(state: AgentState) -> str:
-        """Route from parser: back to analyzer or to reasoning."""
-        # Parser always returns to reasoning to reassess
-        return "reasoning"
+        """Route from parser: back to analyzer."""
+        return "analyzer"
     
     g.add_conditional_edges(
         "parser",
         parser_router,
         {
-            "reasoning": "reasoning",
+            "analyzer": "analyzer",
         }
     )
 

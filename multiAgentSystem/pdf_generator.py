@@ -18,7 +18,8 @@ def generate_pdf_report(
     include_evidence: bool = True,
     max_evidence_items: int = 3,
     include_keywords: bool = True,
-    include_critique: bool = False
+    include_critique: bool = False,
+    evidence_map: Optional[Dict[str, Any]] = None
 ) -> str:
     """
     Generate a formatted PDF report from RCA agent output.
@@ -214,7 +215,64 @@ def generate_pdf_report(
             story.append(Spacer(1, 0.2*inch))
     
     # Add Evidence section if requested
-    if include_evidence and 'evidence' in data:
+    # Prefer evidence_map if provided, otherwise fall back to evidence list (legacy support removed but kept for safety)
+    ev_map = evidence_map if evidence_map else data.get('evidence_map', {})
+    
+    if include_evidence and ev_map:
+        story.append(Paragraph("5. Supporting Evidence", heading_style))
+        
+        # Sort by count
+        sorted_evidence = sorted(
+            ev_map.items(),
+            key=lambda x: x[1].get('count', 0),
+            reverse=True
+        )
+        
+        if max_evidence_items:
+            sorted_evidence = sorted_evidence[:max_evidence_items]
+            
+        for idx, (pattern, entry) in enumerate(sorted_evidence, 1):
+            # Create a structured block for each evidence item
+            evidence_content = []
+            
+            # Header: Pattern + Count
+            count = entry.get('count', 0)
+            evidence_content.append(Paragraph(f"<b>Evidence {idx}:</b> {pattern} (Count: {count})", subheading_style))
+            
+            # Files
+            files = entry.get('files', [])
+            if files:
+                files_str = ", ".join(files[:3])
+                if len(files) > 3:
+                    files_str += f" ... (+{len(files)-3} more)"
+                evidence_content.append(Paragraph(f"<b>Files:</b> {files_str}", body_style))
+            
+            # Sample Lines
+            samples = entry.get('sample_lines', [])
+            if samples:
+                evidence_content.append(Paragraph("<b>Sample Log Lines:</b>", body_style))
+                for sample in samples[:2]:
+                    clean_sample = _clean_text(sample)
+                    if len(clean_sample) > 500:
+                        clean_sample = clean_sample[:500] + "..."
+                    evidence_content.append(Paragraph(clean_sample, code_style))
+            
+            # Variables (Task 6)
+            variables = entry.get('variables', [])
+            if variables:
+                vars_str = ", ".join(variables[:5])
+                if len(variables) > 5:
+                    vars_str += f" ... (+{len(variables)-5} more)"
+                evidence_content.append(Paragraph(f"<b>Variables:</b> {vars_str}", body_style))
+
+            evidence_content.append(Spacer(1, 0.1*inch))
+            
+            # Keep each evidence block together
+            story.append(KeepTogether(evidence_content))
+            story.append(Spacer(1, 0.15*inch))
+
+    elif include_evidence and 'evidence' in data:
+        # Fallback for any legacy data structure (though we removed it from state)
         evidence_list = data.get('evidence', [])
         if evidence_list:
             story.append(Paragraph("5. Supporting Evidence", heading_style))
@@ -327,5 +385,6 @@ def quick_pdf_report(output_data: Dict[str, Any], output_path: str = "rca_report
         include_evidence=True,
         max_evidence_items=3,
         include_keywords=True,
-        include_critique=False
+        include_critique=False,
+        evidence_map=output_data.get('output', {}).get('evidence_map') if 'output' in output_data else output_data.get('evidence_map')
     )

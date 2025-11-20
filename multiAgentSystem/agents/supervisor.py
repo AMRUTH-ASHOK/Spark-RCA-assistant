@@ -41,14 +41,11 @@ def supervisor_node(state: AgentState) -> AgentState:
 
     # Create evidence preview - prefer evidence_map for token efficiency
     evidence_map = state.get("evidence_map", {})
-    legacy_evidence = state.get("evidence", [])
     
     if evidence_map:
         from multiAgentSystem.log_deduplicator import get_evidence_summary_stats
         stats = get_evidence_summary_stats(evidence_map)
         evidence_preview = f"Evidence: {stats['unique_patterns']} unique patterns, {stats['total_occurrences']} occurrences across {stats['unique_files']} files"
-    elif legacy_evidence:
-        evidence_preview = "\n---\n".join(legacy_evidence[-2:])
     else:
         evidence_preview = "(none)"
 
@@ -105,7 +102,8 @@ def supervisor_node(state: AgentState) -> AgentState:
                 "confidence": confidence,
                 "iterations": new_iteration,
                 "keywords": state.get("keywords", []),
-                "evidence": state.get("evidence", []),
+                "keywords": state.get("keywords", []),
+                "evidence_map": state.get("evidence_map", {}),
                 "critic_approved": critic_approved,
                 "critique": state.get("critique", "")
             }

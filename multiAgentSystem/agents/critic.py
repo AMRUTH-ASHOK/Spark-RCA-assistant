@@ -22,11 +22,10 @@ def critic_node(state: AgentState) -> AgentState:
     Returns:
         Updated state with critic feedback
     """
-    # Use evidence_summary if available (new format), otherwise fallback to evidence list
+    # Use evidence_summary if available (new format)
     evidence_for_prompt = state.get("evidence_summary")
     if not evidence_for_prompt:
-        evidence_list = state.get("evidence", [])
-        evidence_for_prompt = "\n---\n".join(evidence_list) if evidence_list else "(none)"
+        evidence_for_prompt = "(none)"
 
     data = invoke_json(
         CRITIC_PROMPT,
@@ -48,6 +47,14 @@ def critic_node(state: AgentState) -> AgentState:
     
     current_conf = float(state.get("confidence", 0.5))
     new_conf = clip(current_conf + adj, 0.0, 1.0)
+
+    # Task 5: If confidence is less than 60%, critic should disapprove
+    if new_conf < 0.6:
+        approve = False
+        if not reasons:
+            reasons = "Confidence is too low (< 0.6). Please gather more evidence or refine the hypothesis."
+        else:
+            reasons = f"Confidence too low ({new_conf:.2f}). " + reasons
 
     return {
         "critic_approved": approve,

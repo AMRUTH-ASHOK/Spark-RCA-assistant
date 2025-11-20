@@ -37,7 +37,7 @@ def extract_error_pattern(log_line: str) -> str:
             if len(parts) > 1:
                 message = parts[1].strip()
                 # Remove common variable parts for better deduplication
-                message = normalize_error_pattern(message)
+                message, _ = normalize_error_pattern(message)
                 return message
 
     # Fallback: return the whole line stripped if no pattern matches
@@ -77,9 +77,13 @@ def extract_timestamp(log_line: str) -> Optional[str]:
     return None
 
 
-def normalize_error_pattern(message: str) -> str:
+    return message, []  # TODO: Return extracted variables in next step
+    
+    
+def normalize_error_pattern(message: str) -> tuple[str, List[str]]:
     """
     Normalize error message by removing variable parts for better deduplication.
+    Also returns the extracted variable parts.
 
     Removes:
     - Executor IDs (executor 12 -> executor *)
@@ -92,28 +96,36 @@ def normalize_error_pattern(message: str) -> str:
         message: Error message to normalize
 
     Returns:
-        Normalized message
+        Tuple of (Normalized message, List of extracted variables)
     """
+    variables = []
+    
+    # Helper to extract and replace
+    def replace_and_collect(pattern, replacement, text):
+        found = re.findall(pattern, text, flags=re.IGNORECASE)
+        variables.extend(found)
+        return re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
     # Replace executor IDs
-    message = re.sub(r'\bexecutor\s+\d+\b', 'executor *', message, flags=re.IGNORECASE)
+    message = replace_and_collect(r'\bexecutor\s+\d+\b', 'executor *', message)
 
     # Replace task IDs
-    message = re.sub(r'\btask\s+\d+\b', 'task *', message, flags=re.IGNORECASE)
-    message = re.sub(r'\bTID\s+\d+\b', 'TID *', message, flags=re.IGNORECASE)
+    message = replace_and_collect(r'\btask\s+\d+(?:\.\d+)?\b', 'task *', message)
+    message = replace_and_collect(r'\bTID\s+\d+\b', 'TID *', message)
 
     # Replace stage IDs
-    message = re.sub(r'\bstage\s+\d+\b', 'stage *', message, flags=re.IGNORECASE)
+    message = replace_and_collect(r'\bstage\s+\d+(?:\.\d+)?\b', 'stage *', message)
 
     # Replace partition IDs
-    message = re.sub(r'\bpartition\s+\d+\b', 'partition *', message, flags=re.IGNORECASE)
+    message = replace_and_collect(r'\bpartition\s+\d+\b', 'partition *', message)
 
     # Replace memory addresses
-    message = re.sub(r'\b0x[0-9a-fA-F]+\b', '0x*', message)
+    message = replace_and_collect(r'\b0x[0-9a-fA-F]+\b', '0x*', message)
 
     # Replace thread IDs
-    message = re.sub(r'\bThread-\d+\b', 'Thread-*', message)
+    message = replace_and_collect(r'\bThread-\d+\b', 'Thread-*', message)
 
-    return message
+    return message, variables
 
 
 def add_evidence_to_map(
@@ -148,7 +160,9 @@ def add_evidence_to_map(
             "count": 0,
             "timestamps": [],
             "files": [],
-            "sample_lines": []
+            "files": [],
+            "sample_lines": [],
+            "variables": []
         }
 
     entry = evidence_map[error_pattern]
@@ -168,6 +182,18 @@ def add_evidence_to_map(
     if len(entry["sample_lines"]) < 3:
         if log_line not in entry["sample_lines"]:
             entry["sample_lines"].append(log_line)
+            
+    # Add variables (Task 6)
+    # Re-extract variables from this specific line to add to the list
+    _, vars_found = normalize_error_pattern(log_line)
+    if vars_found:
+        # Add unique variables (limit total stored to avoid explosion)
+        current_vars = set(entry.get("variables", []))
+        for v in vars_found:
+            if len(current_vars) < 20:  # Limit to 20 unique variables per pattern
+                if v not in current_vars:
+                    entry.setdefault("variables", []).append(v)
+                    current_vars.add(v)
 
     return evidence_map
 

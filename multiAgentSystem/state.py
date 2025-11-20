@@ -15,6 +15,7 @@ class EvidenceEntry(TypedDict):
     timestamps: List[str]         # All timestamps where it occurred
     files: List[str]             # File paths where it occurred (unique)
     sample_lines: List[str]      # Keep 2-3 full sample log lines for context
+    variables: List[str]         # Extracted variable parts (e.g. specific executor IDs)
 
 
 class AgentState(TypedDict, total=False):
@@ -34,7 +35,7 @@ class AgentState(TypedDict, total=False):
     evidence_summary: str                   # Formatted string for LLM consumption
 
     # Deprecated - kept for backward compatibility
-    evidence: List[str]
+    # evidence: List[str]  <-- REMOVED
 
     last_logs_chunk: str
     analyzer_satisfied: bool

@@ -7,7 +7,7 @@ from multiAgentSystem.state import AgentState
 from multiAgentSystem.deps import get_deps
 from multiAgentSystem.prompts import ANALYZER_PROMPT
 from multiAgentSystem.utils import invoke_json
-from multiAgentSystem.config import DEFAULT_KEYWORDS
+from multiAgentSystem.config import DEFAULT_KEYWORDS, MAX_ANALYZE_PARSE_LOOPS
 
 
 def analyzer_llm(hypotheses: List[str], user_context: str, last_logs_chunk: str, existing_keywords: List[str]) -> Dict[str, Any]:
@@ -70,10 +70,21 @@ def analyzer_node(state: "AgentState") -> "AgentState":
 
     # Increment analyze_parse_loops counter (the analyzer is part of that inner loop)
     analyze_loops = int(state.get("analyze_parse_loops", 0)) + 1
+    
+    # Check if we should stop the analyzer-parser loop
+    # Stop if max loops reached OR if no new keywords were generated (convergence)
+    analyzer_satisfied = False
+    if analyze_loops >= MAX_ANALYZE_PARSE_LOOPS:
+        analyzer_satisfied = True
+    elif not new_kws:
+        # If no new keywords found, we might be done, but let's ensure we did at least one pass
+        if analyze_loops > 1:
+            analyzer_satisfied = True
 
     return {
         "keywords": keywords,
         "last_generated_keywords": new_kws,
         "analyze_parse_loops": analyze_loops,
-        # After analyzer, the graph will automatically route to parser via edge
+        "analyzer_satisfied": analyzer_satisfied,
+        # After analyzer, the graph will automatically route to parser or reasoning based on analyzer_satisfied
     }
