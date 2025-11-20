@@ -19,10 +19,9 @@ from multiAgentSystem.tools.gc_analyzer import GC_analyzer_tool
 
 log_analysis_tools = [grep_path_tool, GC_analyzer_tool]
 from multiAgentSystem.state import AgentState
-from multiAgentSystem.log_deduplicator import (
-    deduplicate_grep_results,
-    merge_evidence_maps,
-    format_evidence_map_for_prompt
+from multiAgentSystem.evidence_manager import (
+    process_grep_results,
+    format_evidence_for_llm
 )
 
 
@@ -112,37 +111,33 @@ def parser_node(state: AgentState) -> AgentState:
     
     # Validate inputs
     if not logs_path or not logs_path.strip():
-        error_evidence = {
-            "error_no_path": {
-                "content": "[ERROR] No logs path provided. Please provide a valid logs path to analyze.",
-                "timestamps": [],
-                "count": 1,
-                "first_seen": "N/A",
-                "last_seen": "N/A",
-                "file_path": "N/A",
-                "pattern": "error"
-            }
+        # Merge error into existing evidence map
+        evidence_map = state.get("evidence_map", {}).copy()
+        evidence_map["error_no_path"] = {
+            "count": 1,
+            "timestamps": [],
+            "files": [],
+            "sample_lines": ["[ERROR] No logs path provided. Please provide a valid logs path to analyze."],
+            "variables": []
         }
         return {
-            "evidence_map": merge_evidence_maps(state.get("evidence_map", {}), error_evidence),
+            "evidence_map": evidence_map,
             "last_logs_chunk": "Error: No logs path provided",
             "last_generated_keywords": []
         }
     
     if not kw or len(kw) == 0:
-        error_evidence = {
-            "error_no_keywords": {
-                "content": f"[ERROR] No keywords provided for search. Path: {logs_path}",
-                "timestamps": [],
-                "count": 1,
-                "first_seen": "N/A",
-                "last_seen": "N/A",
-                "file_path": logs_path,
-                "pattern": "error"
-            }
+        # Merge error into existing evidence map
+        evidence_map = state.get("evidence_map", {}).copy()
+        evidence_map["error_no_keywords"] = {
+            "count": 1,
+            "timestamps": [],
+            "files": [logs_path],
+            "sample_lines": [f"[ERROR] No keywords provided for search. Path: {logs_path}"],
+            "variables": []
         }
         return {
-            "evidence_map": merge_evidence_maps(state.get("evidence_map", {}), error_evidence),
+            "evidence_map": evidence_map,
             "last_logs_chunk": "Error: No keywords provided",
             "last_generated_keywords": []
         }
@@ -195,35 +190,30 @@ Decide which tool(s) to use based on the keywords and what you find."""
                     # Ignore malformed tool outputs - agent will summarize instead
                     pass
         
-        # Deduplicate grep results if we found any
-        new_evidence_map = {}
+        # Process grep results if we found any
+        evidence_map = state.get("evidence_map", {}).copy()
         if grep_results:
-            pattern_used = "|".join(kw)
-            new_evidence_map = deduplicate_grep_results(grep_results, pattern_used)
+            # Convert grep results to JSON string for process_grep_results
+            grep_output = json.dumps(grep_results)
+            evidence_map = process_grep_results(evidence_map, grep_output)
         else:
             # If no structured grep results, store the agent's response as evidence
             import hashlib
             content_hash = hashlib.md5(agent_response.encode()).hexdigest()[:12]
             key = f"{logs_path}::{'|'.join(kw)}::{content_hash}"
-            new_evidence_map[key] = {
-                "content": agent_response or "[No findings from parser agent]",
-                "timestamps": [],
+            evidence_map[key] = {
                 "count": 1,
-                "first_seen": "N/A",
-                "last_seen": "N/A",
-                "file_path": logs_path,
-                "pattern": "|".join(kw)
+                "timestamps": [],
+                "files": [logs_path],
+                "sample_lines": [agent_response or "[No findings from parser agent]"],
+                "variables": []
             }
         
-        # Merge with existing evidence map
-        existing_map = state.get("evidence_map", {})
-        merged_map = merge_evidence_maps(existing_map, new_evidence_map)
-        
         # Format a summary for last_logs_chunk
-        summary = format_evidence_map_for_prompt(new_evidence_map, max_entries=10)
+        summary = format_evidence_for_llm(evidence_map, max_patterns=10)
         
         return {
-            "evidence_map": merged_map,
+            "evidence_map": evidence_map,
             "last_logs_chunk": summary,
             "last_generated_keywords": [],
         }
@@ -235,23 +225,18 @@ Decide which tool(s) to use based on the keywords and what you find."""
         content_hash = hashlib.md5(error_content.encode()).hexdigest()[:12]
         key = f"{logs_path}::error::{content_hash}"
         
-        error_evidence = {
-            key: {
-                "content": error_content,
-                "timestamps": [],
-                "count": 1,
-                "first_seen": "N/A",
-                "last_seen": "N/A",
-                "file_path": logs_path,
-                "pattern": "error"
-            }
+        # Merge error into existing evidence map
+        evidence_map = state.get("evidence_map", {}).copy()
+        evidence_map[key] = {
+            "count": 1,
+            "timestamps": [],
+            "files": [logs_path],
+            "sample_lines": [error_content],
+            "variables": []
         }
         
-        existing_map = state.get("evidence_map", {})
-        merged_map = merge_evidence_maps(existing_map, error_evidence)
-        
         return {
-            "evidence_map": merged_map,
+            "evidence_map": evidence_map,
             "last_logs_chunk": error_content,
             "last_generated_keywords": []
         }
