@@ -1,7 +1,3 @@
-"""
-Configuration constants and environment overrides for the multi-agent system.
-"""
-
 import os
 from typing import Optional, Dict
 
