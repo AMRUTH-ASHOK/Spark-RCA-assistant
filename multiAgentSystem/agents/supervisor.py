@@ -39,11 +39,18 @@ def supervisor_node(state: AgentState) -> AgentState:
     else:
         allowed = ["reasoning"]
 
-    # Use evidence_summary if available, otherwise use last 2 evidence entries for preview
-    evidence_preview = state.get("evidence_summary")
-    if not evidence_preview:
-        evidence_list = state.get("evidence", [])
-        evidence_preview = "\n---\n".join(evidence_list[-2:]) if evidence_list else "(none)"
+    # Create evidence preview - prefer evidence_map for token efficiency
+    evidence_map = state.get("evidence_map", {})
+    legacy_evidence = state.get("evidence", [])
+    
+    if evidence_map:
+        from multiAgentSystem.log_deduplicator import get_evidence_summary_stats
+        stats = get_evidence_summary_stats(evidence_map)
+        evidence_preview = f"Evidence: {stats['unique_patterns']} unique patterns, {stats['total_occurrences']} occurrences across {stats['unique_files']} files"
+    elif legacy_evidence:
+        evidence_preview = "\n---\n".join(legacy_evidence[-2:])
+    else:
+        evidence_preview = "(none)"
 
     sup = invoke_json(
         SUPERVISOR_PROMPT,
@@ -55,7 +62,7 @@ def supervisor_node(state: AgentState) -> AgentState:
             "critic_approved": critic_approved,
             "critique": state.get("critique", "") or "(none)",
             "draft": json.dumps(state.get("draft", {}), ensure_ascii=False) if state.get("draft") else "(none)",
-            "evidence": evidence_preview[:1000] if evidence_preview else "(none)",  # Truncate for prompt
+            "evidence": evidence_preview,
         },
         agent_name="supervisor"
     )
@@ -128,12 +135,17 @@ def supervisor_router(state: AgentState) -> NodeType:
         
     Returns:
         Next node to execute
+        
+    Note:
+        Supervisor only routes to: reasoning, critic, or __end__
+        It should NEVER route to analyzer directly.
+        Analyzer is only accessed via reasoning agent's internal routing.
     """
     nxt = state.get("next_action", "") or ""
     if nxt == "critic":
         return "critic"
     if nxt == "reasoning":
         return "reasoning"
-    if nxt == "analyzer":
-        return "analyzer"
+    # Note: "analyzer" is not a valid supervisor route
+    # The reasoning agent handles analyzer routing internally
     return "__end__"

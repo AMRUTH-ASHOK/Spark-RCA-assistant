@@ -51,6 +51,7 @@ This system uses a coordinated team of AI agents to analyze Spark execution logs
 Spark-RCA-assistant/
 ├── README.md
 ├── requirements.txt
+├── agent_testing.ipynb           # Agent testing notebook (mock data)
 ├── multiAgentSystem/
 │   ├── agent_main.ipynb          # Main entry point & RCAAgent class
 │   ├── config.py                 # Configuration & constants
@@ -192,6 +193,31 @@ for event in AGENT.predict_stream(request):
         result = event['data']
 ```
 
+### Testing Individual Agents
+
+Use [agent_testing.ipynb](agent_testing.ipynb) to test agents in isolation with mock data:
+
+```python
+# The notebook includes 6 sections:
+# 1. Setup - imports and helper functions
+# 2. Supervisor Testing - routing decisions
+# 3. Reasoning Testing - hypothesis generation and draft creation
+# 4. Analyzer Testing - keyword generation
+# 5. Parser Testing - log search and evidence map population
+# 6. Critic Testing - validation logic
+
+# Each section includes:
+# - Mock state data for testing
+# - Expected outputs documented
+# - display_result() helper for readable output
+```
+
+**Use Cases:**
+- Debug specific agent behavior without full workflow
+- Test prompt changes in isolation
+- Validate agent logic with controlled inputs
+- Develop new features incrementally
+
 ## How It Works
 
 ### Phase 1: Evidence Collection
@@ -275,20 +301,94 @@ result = {
 
 ## Advanced Configuration
 
-### Environment Variables
+### Per-Agent LLM Configuration (NEW)
 
-```bash
-export LLM_ENDPOINT_NAME="databricks-claude-3-7-sonnet"
-export MAX_OUTER_ITERATIONS="6"
-export MAX_ANALYZE_PARSE_LOOPS="6"
-export CONFIDENCE_THRESHOLD="0.75"
+You can configure different LLM endpoints for each agent to optimize performance and cost. Two approaches are available:
 
-# Per-agent LLM endpoints (optional)
-export REASONING_LLM_ENDPOINT="custom-endpoint"
-export ANALYZER_LLM_ENDPOINT="custom-endpoint"
-export PARSER_LLM_ENDPOINT="custom-endpoint"
-export CRITIC_LLM_ENDPOINT="custom-endpoint"
-export SUPERVISOR_LLM_ENDPOINT="custom-endpoint"
+#### Option A: Runtime Configuration (Before Agent Creation)
+
+```python
+from multiAgentSystem.agent_main import configure_agent_llms, show_llm_configuration, AGENT
+
+# Configure specific agents to use different LLMs
+configure_agent_llms({
+    "reasoning": "databricks-claude-sonnet-4-5",      # Most critical - use best model
+    "critic": "databricks-claude-opus",               # Validation - use powerful model
+    "supervisor": "databricks-claude-3-7-sonnet",     # Orchestration - balanced
+    "analyzer": "databricks-claude-3-5-haiku",        # Keyword gen - fast model
+    "parser": "databricks-claude-3-5-haiku"           # Log search - fast model
+})
+
+# View current configuration
+show_llm_configuration()
+
+# Use the pre-built AGENT instance
+result = AGENT.predict(request)
+```
+
+#### Option C: Constructor Parameter (Per Instance)
+
+```python
+from multiAgentSystem.agent_main import RCAAgent
+
+# Create agent with custom LLM configuration
+agent = RCAAgent(llm_config={
+    "reasoning": "databricks-claude-sonnet-4-5",
+    "critic": "databricks-claude-opus",
+    "supervisor": "databricks-claude-3-7-sonnet"
+    # Unspecified agents use default from config.py
+})
+
+# Run analysis
+result = agent.predict(request)
+```
+
+#### Viewing Current Configuration
+
+```python
+from multiAgentSystem.agent_main import show_llm_configuration
+
+# Display which LLM each agent is using
+show_llm_configuration()
+
+# Output:
+# ============================================================
+# Current LLM Configuration:
+#   reasoning    -> databricks-claude-sonnet-4-5              [runtime]
+#   analyzer     -> databricks-claude-3-7-sonnet              [default]
+#   parser       -> databricks-claude-3-7-sonnet              [default]
+#   critic       -> databricks-claude-opus                    [runtime]
+#   supervisor   -> databricks-claude-3-7-sonnet              [default]
+# ============================================================
+```
+
+#### LLM Selection Priority
+
+The system uses a three-tier priority:
+1. **Runtime config** (via `configure_agent_llms()` or `llm_config` parameter) - highest priority
+2. **AGENT_LLM_ENDPOINTS** (in `config.py`) - per-agent defaults
+3. **LLM_ENDPOINT_NAME** (in `config.py`) - global default
+
+#### Best Practices for LLM Selection
+
+- **Reasoning Agent**: Use strongest model (Sonnet 4.5/Opus) - most critical for RCA quality
+- **Critic Agent**: Use strong model (Opus/Sonnet) - validation requires deep reasoning
+- **Supervisor Agent**: Use balanced model (Sonnet) - orchestration needs good judgment
+- **Analyzer Agent**: Use fast model (Haiku) - keyword generation is straightforward
+- **Parser Agent**: Use fast model (Haiku) - log search doesn't require complex reasoning
+
+### General Configuration
+
+Edit `config.py` for system-wide settings:
+
+```python
+# Loop Control
+MAX_OUTER_ITERATIONS = 6          # Supervisor cycles
+MAX_ANALYZE_PARSE_LOOPS = 6       # Evidence gathering loops
+CONFIDENCE_THRESHOLD = 0.75       # Minimum confidence to finish
+
+# Default LLM (if not overridden per-agent)
+LLM_ENDPOINT_NAME = "databricks-claude-3-7-sonnet"
 ```
 
 ### Customizing Prompts
@@ -372,7 +472,12 @@ reportlab                       # PDF generation
 
 ## Recent Updates
 
-### v2.0 (Latest)
+### v2.1 (Latest)
+- ✅ Per-agent LLM configuration (runtime and constructor options)
+- ✅ LLM configuration viewing and validation
+- ✅ Agent testing notebook with mock data
+
+### v2.0
 - ✅ Optimized evidence storage with deduplication
 - ✅ MLflow tracing for all tools
 - ✅ Evidence occurrence tracking
@@ -385,17 +490,3 @@ reportlab                       # PDF generation
 - Basic evidence collection
 - PDF report generation
 
-## License
-
-[Add your license information]
-
-## Support
-
-For issues or questions:
-- Check Databricks documentation
-- Review MLflow traces for debugging
-- Examine generated PDF reports
-
----
-
-**Built with LangGraph, MLflow, and Databricks Agent Framework**

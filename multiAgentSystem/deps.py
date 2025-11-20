@@ -6,7 +6,7 @@ from typing import Optional, Any, Dict
 from databricks_langchain import ChatDatabricks
 from langchain_core.output_parsers import StrOutputParser
 
-from multiAgentSystem.config import LLM_ENDPOINT_NAME, AGENT_LLM_ENDPOINTS
+from multiAgentSystem.config import LLM_ENDPOINT_NAME, get_agent_llm_endpoint
 from multiAgentSystem.exceptions import ConfigurationError, LLMError
 
 # Global dependencies instance
@@ -69,8 +69,11 @@ class Dependencies:
     
     def _initialize_agent_llms(self):
         """Initialize LLM instances for each agent based on configuration."""
-        for agent_name, endpoint in AGENT_LLM_ENDPOINTS.items():
+        agent_names = ["reasoning", "analyzer", "parser", "critic", "supervisor"]
+
+        for agent_name in agent_names:
             try:
+                endpoint = get_agent_llm_endpoint(agent_name)
                 self._agent_llms[agent_name] = make_llm(endpoint=endpoint)
             except LLMError as e:
                 # Log error but don't fail initialization
