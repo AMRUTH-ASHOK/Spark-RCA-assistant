@@ -14,6 +14,8 @@ import json
 from pathlib import Path
 from typing import List, Tuple, Union, Iterator, Optional, Sequence
 
+from langchain_core.tools import tool
+
 try:
     import mlflow
     from mlflow.entities import SpanType
@@ -25,7 +27,7 @@ except ImportError:
         def decorator(func):
             return func
         return decorator if not args else decorator(args[0])
-    mlflow = type('obj', (object,), {'trace': noop_decorator})
+    mlflow = type('obj', (object,), {'trace': noop_decorator})()
 
 
 @mlflow.trace(span_type=SpanType.TOOL if MLFLOW_AVAILABLE else None, name="grep_path_tool")
@@ -189,3 +191,40 @@ def grep_path_tool(
 
     print(f"Found {len(results)} results")
     return json.dumps(results, ensure_ascii=False)
+
+
+# LangChain tool wrapper for use with ReAct agents
+@tool
+def grep_logs_tool(target: str, patterns: str) -> str:
+    """
+    Search Spark log files for specific patterns/keywords.
+    
+    Use this tool to search for errors, exceptions, and other patterns in log files.
+    This is the primary tool for investigating log-based evidence.
+    
+    Args:
+        target: The path to the log directory or file to search (must be under /Volumes/)
+        patterns: Comma-separated list of patterns/keywords to search for (e.g., "ERROR,OutOfMemoryError,executor lost")
+    
+    Returns:
+        JSON string with search results containing path, line_no, line_text for each match
+    
+    Examples:
+        - grep_logs_tool("/Volumes/logs/spark/", "ERROR,Exception")
+        - grep_logs_tool("/Volumes/logs/driver.log", "OutOfMemoryError,heap space")
+    """
+    # Parse comma-separated patterns
+    pattern_list = [p.strip() for p in patterns.split(",") if p.strip()]
+    
+    if not pattern_list:
+        return json.dumps({"error": "No patterns provided"})
+    
+    return grep_path_tool(
+        target=target,
+        patterns=pattern_list,
+        mode="any",
+        ignore_case=True,
+        recursive=True,
+        restrict_to_volumes=True,
+        max_results=5000
+    )

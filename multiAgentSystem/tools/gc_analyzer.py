@@ -14,6 +14,8 @@ import re
 import json
 from typing import List, Dict, Any, Optional
 
+from langchain_core.tools import tool
+
 try:
     import mlflow
     from mlflow.entities import SpanType
@@ -25,7 +27,7 @@ except ImportError:
         def decorator(func):
             return func
         return decorator if not args else decorator(args[0])
-    mlflow = type('obj', (object,), {'trace': noop_decorator})
+    mlflow = type('obj', (object,), {'trace': noop_decorator})()
 
 
 @mlflow.trace(span_type=SpanType.TOOL if MLFLOW_AVAILABLE else None, name="gc_analyzer_tool")
@@ -413,3 +415,45 @@ def GC_analyzer_tool(
         "rows": rows,
         "stats": stats
     }
+
+
+# LangChain tool wrapper for use with ReAct agents
+@tool
+def analyze_gc_logs_tool(log_text: str) -> str:
+    """
+    Analyze Garbage Collection (GC) logs for memory-related issues.
+    
+    Use this tool when investigating memory problems, OOM errors, or GC overhead issues.
+    This tool parses GC log output and provides statistics about pause times, memory freed,
+    and identifies problematic GC events.
+    
+    Args:
+        log_text: Raw GC log text OR grep output (JSON array with line_text fields).
+                  Can be the direct output from grep_logs_tool when searching for GC patterns.
+    
+    Returns:
+        JSON string with GC analysis including:
+        - summary: Overview statistics (total events, pause times, memory freed)
+        - top_pauses_table: Longest pause events (potential performance issues)
+        - top_freed_table: Largest memory frees
+        - stats: Detailed statistics (p50/p95/p99 pause times, event counts)
+    
+    Examples:
+        - Use after grep_logs_tool finds GC-related entries
+        - Analyze when keywords contain: GC, heap, memory, OOM, pause
+    """
+    result = GC_analyzer_tool(
+        log_text=log_text,
+        format="markdown",
+        max_rows=100,
+        top_n=10,
+        sort_by="duration"
+    )
+    
+    # Return a JSON-serializable summary for the agent
+    return json.dumps({
+        "summary": result.get("summary", ""),
+        "top_pauses_table": result.get("top_pauses_table", ""),
+        "stats": result.get("stats", {}),
+        "total_events": result.get("stats", {}).get("total_events", 0)
+    }, indent=2)

@@ -9,7 +9,6 @@ from multiAgentSystem.prompts import REASON_DECIDE_PROMPT, SUMMARIZE_PROMPT
 from multiAgentSystem.utils import (
     invoke_json,
     format_hypotheses,
-    format_evidence,
     format_keywords,
 )
 from multiAgentSystem.utils import clip, dedupe_keep_order
@@ -19,7 +18,26 @@ from multiAgentSystem.exceptions import StateError
 
 from multiAgentSystem.agents.analyzer import analyzer_llm
 
+# MLflow tracing setup
+try:
+    import mlflow
+    from mlflow.entities import SpanType
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    mlflow = None
 
+
+def _trace_agent(name: str):
+    """Decorator factory for MLflow agent tracing."""
+    def decorator(func):
+        if not MLFLOW_AVAILABLE:
+            return func
+        return mlflow.trace(span_type=SpanType.AGENT, name=name)(func)
+    return decorator
+
+
+@_trace_agent("reasoning_agent")
 def reasoning_node(state: AgentState) -> AgentState:
     """
     Reasoning Agent:
@@ -36,9 +54,8 @@ def reasoning_node(state: AgentState) -> AgentState:
     """
     analyze_loops = int(state.get("analyze_parse_loops", 0))
     
-    # 1) Assess sufficiency
-    # Use evidence_summary if available (new format), otherwise fallback to evidence list
-    evidence_for_prompt = state.get("evidence_summary") or format_evidence(state.get("evidence", []))
+    # 1) Assess sufficiency using optimized evidence_map strategy
+    evidence_for_prompt = state.get("evidence_summary") or "(no evidence collected yet)"
 
     decide = invoke_json(
         REASON_DECIDE_PROMPT,
@@ -59,7 +76,6 @@ def reasoning_node(state: AgentState) -> AgentState:
         new_hypotheses = [str(new_hypotheses)]
     hypotheses = dedupe_keep_order((state.get("hypotheses") or []) + [str(h) for h in new_hypotheses])
 
-    evidence = list(state.get("evidence") or [])
     keywords = list(state.get("keywords") or [])
     last_logs_chunk = state.get("last_logs_chunk", "") or ""
 
@@ -69,7 +85,6 @@ def reasoning_node(state: AgentState) -> AgentState:
         return {
             "hypotheses": hypotheses,
             "keywords": keywords,
-            "evidence": evidence,
             "last_logs_chunk": last_logs_chunk,
             "analyze_parse_loops": analyze_loops,
             "last_status": "continue",
@@ -77,8 +92,8 @@ def reasoning_node(state: AgentState) -> AgentState:
         }
 
     # 3) Either evidence is sufficient OR we've hit max loops → summarize
-    # Use evidence_summary if available (new format), otherwise fallback to evidence list
-    evidence_for_summary = state.get("evidence_summary") or format_evidence(evidence)
+    # Use optimized evidence_map strategy
+    evidence_for_summary = state.get("evidence_summary") or "(no evidence collected)"
 
     summary = invoke_json(
         SUMMARIZE_PROMPT,
@@ -104,7 +119,6 @@ def reasoning_node(state: AgentState) -> AgentState:
     return {
         "hypotheses": hypotheses,
         "keywords": keywords,
-        "evidence": evidence,
         "last_logs_chunk": last_logs_chunk,
         "analyze_parse_loops": analyze_loops,
         "draft": {"problem": problem, "rca": rca, "mitigation": mitigation},

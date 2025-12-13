@@ -9,6 +9,24 @@ from multiAgentSystem.prompts import ANALYZER_PROMPT
 from multiAgentSystem.utils import invoke_json
 from multiAgentSystem.config import DEFAULT_KEYWORDS, MAX_ANALYZE_PARSE_LOOPS
 
+# MLflow tracing setup
+try:
+    import mlflow
+    from mlflow.entities import SpanType
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    mlflow = None
+
+
+def _trace_agent(name: str):
+    """Decorator factory for MLflow agent tracing."""
+    def decorator(func):
+        if not MLFLOW_AVAILABLE:
+            return func
+        return mlflow.trace(span_type=SpanType.AGENT, name=name)(func)
+    return decorator
+
 
 def analyzer_llm(hypotheses: List[str], user_context: str, last_logs_chunk: str, existing_keywords: List[str]) -> Dict[str, Any]:
     """
@@ -52,6 +70,7 @@ def analyzer_llm(hypotheses: List[str], user_context: str, last_logs_chunk: str,
     return {"keywords": final_kws[:15], "rationale": str(data.get("rationale") or "").strip()}
 
 
+@_trace_agent("analyzer_agent")
 def analyzer_node(state: "AgentState") -> "AgentState":
     """
     Analyzer agent node that produces keywords from hypotheses and requests the parser.

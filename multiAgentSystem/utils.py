@@ -85,8 +85,12 @@ def invoke_json(prompt, variables: Dict[str, Any], agent_name: Optional[str] = N
         
     Returns:
         Parsed JSON dict or empty dict if parsing fails
+        
+    Raises:
+        LLMError: If LLM invocation fails after retries
     """
     from multiAgentSystem.deps import get_deps
+    from multiAgentSystem.exceptions import LLMError
     
     deps = get_deps()
     
@@ -94,11 +98,31 @@ def invoke_json(prompt, variables: Dict[str, Any], agent_name: Optional[str] = N
     llm = deps.get_agent_llm(agent_name) if agent_name else deps.llm
     
     chain = prompt | llm | deps.str_parser
-    text = chain.invoke(variables)
-    data = safe_json_loads(text) or {}
-    if not isinstance(data, dict):
-        data = {}
-    return data
+    
+    max_retries = 2
+    last_error = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            text = chain.invoke(variables)
+            data = safe_json_loads(text) or {}
+            if not isinstance(data, dict):
+                data = {}
+            return data
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries:
+                # Log retry attempt
+                print(f"Warning: LLM invocation failed (attempt {attempt + 1}/{max_retries + 1}): {str(e)[:100]}")
+                continue
+            else:
+                # Final attempt failed, raise error
+                raise LLMError(
+                    f"LLM invocation failed for agent '{agent_name or 'default'}' after {max_retries + 1} attempts: {str(last_error)}"
+                ) from last_error
+    
+    # Should not reach here, but return empty dict as safety
+    return {}
 
 
 # Formatting utilities

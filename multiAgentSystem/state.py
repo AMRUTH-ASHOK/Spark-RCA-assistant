@@ -30,12 +30,9 @@ class AgentState(TypedDict, total=False):
     hypotheses: List[str]
     keywords: List[str]
 
-    # Evidence storage - NEW optimized structure
+    # Evidence storage - optimized structure
     evidence_map: Dict[str, EvidenceEntry]  # error_pattern -> EvidenceEntry
     evidence_summary: str                   # Formatted string for LLM consumption
-
-    # Deprecated - kept for backward compatibility
-    # evidence: List[str]  <-- REMOVED
 
     last_logs_chunk: str
     analyzer_satisfied: bool

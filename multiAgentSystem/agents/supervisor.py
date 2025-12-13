@@ -11,8 +11,26 @@ from multiAgentSystem.config import MAX_OUTER_ITERATIONS, CONFIDENCE_THRESHOLD
 from multiAgentSystem.state import AgentState, NodeType
 from multiAgentSystem.tools.pdf_report_tool import generate_rca_report_tool
 
+# MLflow tracing setup
+try:
+    import mlflow
+    from mlflow.entities import SpanType
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    mlflow = None
 
 
+def _trace_agent(name: str):
+    """Decorator factory for MLflow agent tracing."""
+    def decorator(func):
+        if not MLFLOW_AVAILABLE:
+            return func
+        return mlflow.trace(span_type=SpanType.AGENT, name=name)(func)
+    return decorator
+
+
+@_trace_agent("supervisor_agent")
 def supervisor_node(state: AgentState) -> AgentState:
     """
     Supervisor decides next_action and manages outer iteration.

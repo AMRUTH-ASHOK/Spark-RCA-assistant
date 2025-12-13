@@ -10,8 +10,26 @@ from multiAgentSystem.utils import invoke_json
 from multiAgentSystem.utils import clip
 from multiAgentSystem.state import AgentState
 
+# MLflow tracing setup
+try:
+    import mlflow
+    from mlflow.entities import SpanType
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    mlflow = None
 
 
+def _trace_agent(name: str):
+    """Decorator factory for MLflow agent tracing."""
+    def decorator(func):
+        if not MLFLOW_AVAILABLE:
+            return func
+        return mlflow.trace(span_type=SpanType.AGENT, name=name)(func)
+    return decorator
+
+
+@_trace_agent("critic_agent")
 def critic_node(state: AgentState) -> AgentState:
     """
     Critic validates draft vs evidence and nudges confidence.

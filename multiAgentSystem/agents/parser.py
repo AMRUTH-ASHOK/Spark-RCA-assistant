@@ -14,15 +14,36 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.prebuilt import create_react_agent
 
 from multiAgentSystem.deps import get_deps
-from multiAgentSystem.tools.grep_tool import grep_path_tool
-from multiAgentSystem.tools.gc_analyzer import GC_analyzer_tool
-
-log_analysis_tools = [grep_path_tool, GC_analyzer_tool]
+from multiAgentSystem.tools.grep_tool import grep_logs_tool
+from multiAgentSystem.tools.gc_analyzer import analyze_gc_logs_tool
 from multiAgentSystem.state import AgentState
 from multiAgentSystem.evidence_manager import (
     process_grep_results,
     format_evidence_for_llm
 )
+from multiAgentSystem.exceptions import StateError
+
+# MLflow tracing setup
+try:
+    import mlflow
+    from mlflow.entities import SpanType
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+    mlflow = None
+
+
+def _trace_agent(name: str):
+    """Decorator factory for MLflow agent tracing."""
+    def decorator(func):
+        if not MLFLOW_AVAILABLE:
+            return func
+        return mlflow.trace(span_type=SpanType.AGENT, name=name)(func)
+    return decorator
+
+
+# LangChain tools for the parser agent
+log_analysis_tools = [grep_logs_tool, analyze_gc_logs_tool]
 
 
 # Create the parser agent with access to log analysis tools
@@ -89,6 +110,7 @@ def get_parser_agent():
     return _parser_agent
 
 
+@_trace_agent("parser_agent")
 def parser_node(state: AgentState) -> AgentState:
     """
     Parser agent node that uses LangChain tools to search and analyze logs.
@@ -187,16 +209,37 @@ Decide which tool(s) to use based on the keywords and what you find.""")
         # The agent may have used grep_logs - check if we can deduplicate the results
         # Look for tool call results in messages
         grep_results = []
+        tool_extraction_errors = []
+        
         for msg in messages:
             if hasattr(msg, 'type') and msg.type == 'tool':
                 try:
                     tool_output = msg.content
                     parsed = json.loads(tool_output)
                     if isinstance(parsed, list):
-                        grep_results.extend(parsed)
-                except Exception:
-                    # Ignore malformed tool outputs - agent will summarize instead
-                    pass
+                        # Validate each item has required structure
+                        for item in parsed:
+                            if isinstance(item, dict) and 'line_text' in item:
+                                grep_results.append(item)
+                            elif isinstance(item, dict):
+                                # Dict but missing expected structure
+                                tool_extraction_errors.append(
+                                    f"Tool output item missing 'line_text' field: {list(item.keys())}"
+                                )
+                    elif isinstance(parsed, dict):
+                        # GC analyzer returns a dict, not a list
+                        grep_results.append({"line_text": str(parsed), "path": logs_path, "line_no": 0})
+                except json.JSONDecodeError as e:
+                    tool_extraction_errors.append(f"JSON decode error in tool output: {str(e)}")
+                except Exception as e:
+                    tool_extraction_errors.append(f"Unexpected error parsing tool output: {str(e)}")
+        
+        # Raise error if tool extraction consistently failed but we got tool messages
+        if tool_extraction_errors and not grep_results:
+            raise StateError(
+                f"Parser tool extraction failed. Expected grep results with 'line_text' field. "
+                f"Errors: {'; '.join(tool_extraction_errors[:3])}"
+            )
         
         # Process grep results if we found any
         evidence_map = state.get("evidence_map", {}).copy()
