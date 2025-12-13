@@ -43,7 +43,7 @@ def grep_path_tool(
     follow_symlinks: bool = False,
     restrict_to_volumes: bool = True,
     max_results: int = 10000,  # Increased from 1000 to capture more log context
-    max_bytes_per_file: int = 64 * 1024 * 1024,
+    max_bytes_per_file: int = 128 * 1024 * 1024,
     return_which: bool = False                     # include which patterns matched per line
 ) -> str:
     """
