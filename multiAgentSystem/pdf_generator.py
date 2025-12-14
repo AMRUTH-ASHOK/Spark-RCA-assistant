@@ -331,18 +331,39 @@ def generate_pdf_report(
     
     # 4. Evidence
     ev_map = evidence_map if evidence_map else data.get('evidence_map', {})
+    key_evidence_keys = data.get('key_evidence', [])
+    
     if include_evidence and ev_map:
         story.append(Paragraph("4. Supporting Evidence", styles.h1))
         
-        # Sort evidence
-        sorted_evidence = sorted(
-            ev_map.items(),
-            key=lambda x: x[1].get('count', 0),
-            reverse=True
-        )
+        sorted_evidence = []
         
-        if max_evidence_items:
-            sorted_evidence = sorted_evidence[:max_evidence_items]
+        # Strategy 1: Use explicit key evidence from Reasoning Agent
+        if key_evidence_keys:
+            # Filter and order based on the agent's selection
+            for key in key_evidence_keys:
+                if key in ev_map:
+                    sorted_evidence.append((key, ev_map[key]))
+            
+            # If agent selected keys but they aren't in the map (rare), fall back? 
+            # Or if the list is empty, fall back.
+            if not sorted_evidence:
+                 # Fallback to count-based if keys didn't match
+                 sorted_evidence = sorted(
+                    ev_map.items(),
+                    key=lambda x: x[1].get('count', 0),
+                    reverse=True
+                )
+        else:
+            # Strategy 2: Fallback to top N by count (Legacy behavior)
+            sorted_evidence = sorted(
+                ev_map.items(),
+                key=lambda x: x[1].get('count', 0),
+                reverse=True
+            )
+            
+            if max_evidence_items:
+                sorted_evidence = sorted_evidence[:max_evidence_items]
             
         for idx, (pattern, entry) in enumerate(sorted_evidence, 1):
             # Evidence Header

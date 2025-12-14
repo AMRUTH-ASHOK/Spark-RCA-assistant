@@ -144,13 +144,19 @@ SUMMARIZE_PROMPT = ChatPromptTemplate.from_messages(
          "- Circumstantial evidence (timing, correlation without causation) = [INFERRED]\n"
          "- Include the calculation in your thinking but output only the final confidence value\n\n"
          
+         "KEY EVIDENCE SELECTION:\n"
+         "Identify the specific log patterns from the provided evidence that directly support your [PROVEN] statements.\n"
+         "Select ONLY the evidence that is relevant to the root cause. Ignore red herrings or unrelated errors.\n"
+         "Return these as a list of strings matching the keys/patterns from the evidence summary.\n\n"
+
          "OUTPUT FORMAT (strict JSON):\n"
          "Example output structure:\n"
          "{{{{\n"
          '  "problem": "Clear description of what failed and its impact",\n'
          '  "rca": "Causal chain with [PROVEN]/[INFERRED] markers and evidence citations",\n'
          '  "mitigation": "Concrete actionable steps with Spark configs where applicable",\n'
-         '  "confidence": 0.75\n'
+         '  "confidence": 0.75,\n'
+         '  "key_evidence": ["OutOfMemoryError", "Executor 12 lost"]\n'
          "}}}}\n\n"
          "Output ONLY valid JSON, no markdown, no additional text."),
         ("user",

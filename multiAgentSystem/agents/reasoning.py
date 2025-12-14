@@ -138,6 +138,9 @@ def reasoning_node(state: AgentState) -> AgentState:
     problem = str(summary.get("problem") or "").strip() or "Problem: (unspecified)"
     rca = str(summary.get("rca") or "").strip() or "RCA: (unspecified)"
     mitigation = str(summary.get("mitigation") or "").strip() or "Mitigation: (unspecified)"
+    key_evidence = summary.get("key_evidence") or []
+    if not isinstance(key_evidence, list):
+        key_evidence = []
     
     try:
         conf = float(summary.get("confidence"))
@@ -151,6 +154,7 @@ def reasoning_node(state: AgentState) -> AgentState:
         "last_logs_chunk": last_logs_chunk,
         "analyze_parse_loops": analyze_loops,
         "draft": {"problem": problem, "rca": rca, "mitigation": mitigation},
+        "key_evidence": key_evidence,
         "confidence": conf,
         "last_status": "summarized",
         "next_action": "",  # Clear next_action, let supervisor decide

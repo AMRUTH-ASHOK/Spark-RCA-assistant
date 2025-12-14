@@ -40,6 +40,7 @@ class AgentState(TypedDict, total=False):
 
     # Draft + quality
     draft: Dict[str, str]          # {"problem": "...", "rca": "...", "mitigation": "..."}
+    key_evidence: List[str]        # List of evidence keys that directly support the RCA
     confidence: float
     critic_approved: bool
     critique: str
