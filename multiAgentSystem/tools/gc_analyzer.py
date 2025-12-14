@@ -376,6 +376,203 @@ def GC_analyzer_tool(
             f"**Observed window:** {val('observed_span_s','s')}  •  **Event rate:** {val('events_per_min','rate')}"
         )
 
+    def _extract_executor_ip(path: Optional[str]) -> Optional[str]:
+        """Extract executor IP from file path like executor-10.139.127.191.log"""
+        if not path:
+            return None
+        m = re.search(r"executor-([\d\.]+)", path)
+        return m.group(1) if m else None
+
+    def _determine_gc_health(full_gc_count: int, max_duration_ms: float, max_heap_used_pct: float) -> Dict[str, Any]:
+        """Determine GC health status based on metrics"""
+        issues = []
+        
+        # Check Full GC frequency
+        if full_gc_count >= 15:
+            issues.append("Excessive Full GCs")
+            severity = "⚠️ Heavy GC activity"
+        elif full_gc_count >= 5:
+            issues.append("High Full GC count")
+            severity = "⚠️ Moderate GC activity"
+        else:
+            severity = "✅ Healthy"
+        
+        # Check pause duration
+        if max_duration_ms >= 1000:
+            issues.append(f"Long pause ({max_duration_ms/1000:.2f}s)")
+            severity = "⚠️ Heavy GC activity" if severity == "✅ Healthy" else severity
+        
+        # Check heap utilization
+        if max_heap_used_pct >= 90:
+            issues.append(f"High heap pressure ({max_heap_used_pct:.0f}%)")
+            severity = "⚠️ Heavy GC activity" if severity == "✅ Healthy" else severity
+        
+        return {
+            "status": severity,
+            "issues": issues
+        }
+
+    def _aggregate_by_executor(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Aggregate GC events by executor IP"""
+        by_executor: Dict[str, List[Dict[str, Any]]] = {}
+        
+        for r in rows:
+            executor_ip = _extract_executor_ip(r.get("path"))
+            if not executor_ip:
+                executor_ip = "driver" if "driver" in str(r.get("path", "")).lower() else "unknown"
+            
+            if executor_ip not in by_executor:
+                by_executor[executor_ip] = []
+            by_executor[executor_ip].append(r)
+        
+        aggregated = {}
+        for executor_ip, events in by_executor.items():
+            full_gcs = [e for e in events if e.get("full")]
+            durations = [e["duration_ms"] for e in events if e["duration_ms"] >= 0]
+            heap_used = []
+            
+            # Calculate heap % used from after_bytes / heap_bytes
+            for e in events:
+                if e["heap_bytes"] > 0 and e["mem_after_bytes"] >= 0:
+                    heap_used.append(e["mem_after_bytes"] / e["heap_bytes"] * 100)
+            
+            max_heap_pct = max(heap_used) if heap_used else 0.0
+            max_duration = max(durations) if durations else 0.0
+            full_gc_count = len(full_gcs)
+            
+            health = _determine_gc_health(full_gc_count, max_duration, max_heap_pct)
+            
+            aggregated[executor_ip] = {
+                "executor_ip": executor_ip,
+                "total_events": len(events),
+                "full_gc_count": full_gc_count,
+                "young_gc_count": len([e for e in events if e.get("kind") == "pause_young"]),
+                "max_duration_ms": max_duration,
+                "max_duration_sec": max_duration / 1000.0 if max_duration > 0 else 0.0,
+                "avg_duration_ms": sum(durations) / len(durations) if durations else 0.0,
+                "max_heap_used_pct": max_heap_pct,
+                "max_heap_used_bytes": max([e["mem_after_bytes"] for e in events if e["mem_after_bytes"] >= 0], default=0),
+                "health_status": health["status"],
+                "health_issues": health["issues"]
+            }
+        
+        return aggregated
+
+    def _render_driver_gc_table(rows: List[Dict[str, Any]], max_rows: int = 50) -> str:
+        """Render detailed driver GC events table"""
+        driver_events = [r for r in rows if "driver" in str(r.get("path", "")).lower()]
+        
+        if not driver_events:
+            return "_No driver GC events found_"
+        
+        header = (
+            "**Driver GC Events**\n\n"
+            "| Timestamp | GC Type | Duration | Before GC | After GC | Reclaimed | Heap % Used |\n"
+            "|---:|---|---:|---:|---:|---:|---:|"
+        )
+        
+        lines = [header]
+        for r in driver_events[:max_rows]:
+            ts = f"{r['timestamp_s']:.0f}s" if r["timestamp_s"] >= 0 else "?"
+            gc_type = "Full GC" if r.get("full") else r.get("kind_short", "GC")
+            duration = f"{r['duration_ms']/1000:.2f}" if r["duration_ms"] >= 0 else "?"
+            before = r["mem_before_str"]
+            after = r["mem_after_str"]
+            reclaimed = r["freed_mb_str"]
+            
+            # Calculate heap % used
+            heap_pct = "?"
+            if r["heap_bytes"] > 0 and r["mem_after_bytes"] >= 0:
+                heap_pct = f"{(r['mem_after_bytes'] / r['heap_bytes'] * 100):.0f}%"
+            
+            lines.append(f"| {ts} | {gc_type} | {duration} | {before} | {after} | {reclaimed} | {heap_pct} |")
+        
+        if len(driver_events) > max_rows:
+            lines.append(f"\n_... {len(driver_events) - max_rows} more events_")
+        
+        return "\n".join(lines)
+
+    def _render_executor_summary_table(aggregated: Dict[str, Dict[str, Any]]) -> str:
+        """Render executor-level GC summary table"""
+        if not aggregated:
+            return "_No executor GC events found_"
+        
+        # Separate driver from executors
+        executors = {k: v for k, v in aggregated.items() if k != "driver" and k != "unknown"}
+        
+        if not executors:
+            return "_No executor GC events found_"
+        
+        header = (
+            "**Executor GC Summary**\n\n"
+            "| Executor IP | Total Full GCs | Max GC Duration | Max Heap Used | GC Status |\n"
+            "|---|---:|---:|---:|---|"
+        )
+        
+        lines = [header]
+        # Sort by full_gc_count descending
+        sorted_executors = sorted(executors.items(), key=lambda x: x[1]["full_gc_count"], reverse=True)
+        
+        for executor_ip, stats in sorted_executors:
+            full_gcs = f"{stats['full_gc_count']}+" if stats['full_gc_count'] >= 15 else str(stats['full_gc_count'])
+            max_duration = f"{stats['max_duration_sec']:.2f} sec" if stats['max_duration_sec'] > 0 else "?"
+            max_heap = _bytes_to_mb(stats['max_heap_used_bytes'])
+            status = stats['health_status']
+            
+            lines.append(f"| {executor_ip} | {full_gcs} | {max_duration} | {max_heap} | {status} |")
+        
+        return "\n".join(lines)
+
+    def _extract_gc_config(text: str) -> Dict[str, str]:
+        """Extract GC configuration from logs"""
+        config = {}
+        
+        # Try to find heap size settings
+        heap_match = re.search(r"-Xmx([\d\.]+)([GMK])", text)
+        if heap_match:
+            value = float(heap_match.group(1))
+            unit = heap_match.group(2)
+            if unit == "G":
+                config["Max Heap Size"] = f"{value} GB (-Xmx{heap_match.group(1)}{unit})"
+            elif unit == "M":
+                config["Max Heap Size"] = f"{value/1024:.1f} GB (-Xmx{heap_match.group(1)}{unit})"
+        
+        # Try to infer from GC events
+        if not config.get("Max Heap Size"):
+            heap_sizes = re.findall(r"\((\d+(?:\.\d+)?[KMGT])\)", text)
+            if heap_sizes:
+                # Parse largest heap size seen
+                max_heap = 0
+                for hs in heap_sizes:
+                    bytes_val = _parse_size_to_bytes(hs)
+                    if bytes_val > max_heap:
+                        max_heap = bytes_val
+                if max_heap > 0:
+                    config["Max Heap Size"] = f"{max_heap/(1024**3):.1f} GB (~observed)"
+        
+        # Look for GC algorithm mentions
+        if "G1" in text or "G1GC" in text:
+            config["GC Algorithm"] = "G1 Garbage Collector"
+        elif "ParallelGC" in text or "PSYoungGen" in text:
+            config["GC Algorithm"] = "Parallel GC"
+        elif "CMS" in text:
+            config["GC Algorithm"] = "Concurrent Mark Sweep (CMS)"
+        
+        return config
+
+    def _render_gc_config(config: Dict[str, str]) -> str:
+        """Render GC configuration table"""
+        if not config:
+            return "_GC configuration not detected in logs_"
+        
+        header = "**GC Configuration**\n\n| Parameter | Value |\n|---|---|"
+        lines = [header]
+        
+        for param, value in config.items():
+            lines.append(f"| {param} | {value} |")
+        
+        return "\n".join(lines)
+
     # ======================= Pipeline =======================
     rows = _parse_gc_rows(log_text or "")
 
@@ -398,20 +595,34 @@ def GC_analyzer_tool(
     # Stats & summaries computed on the *filtered* set
     stats = _compute_stats(rows)
 
+    # Executor aggregation
+    executor_aggregated = _aggregate_by_executor(rows)
+
     # Tables
     table = _render_main_table(rows, format, max_rows)
+    driver_gc_table = _render_driver_gc_table(rows, max_rows=50)
+    executor_summary_table = _render_executor_summary_table(executor_aggregated)
+    
     top_by_dur = sorted(rows, key=lambda r: (r["duration_ms"] if r["duration_ms"] >= 0 else -1), reverse=True)
     top_by_freed = sorted(rows, key=lambda r: (r["freed_bytes"] if r["freed_bytes"] >= 0 else -1), reverse=True)
 
     top_pauses_table = _render_top_table(top_by_dur, "duration_ms", "Longest pauses", top_n)
     top_freed_table = _render_top_table(top_by_freed, "freed_bytes", "Largest frees", top_n)
     summary = _render_summary(stats)
+    
+    # Extract GC configuration
+    gc_config = _extract_gc_config(log_text or "")
+    gc_config_table = _render_gc_config(gc_config)
 
     return {
         "table": table,
+        "driver_gc_table": driver_gc_table,
+        "executor_summary_table": executor_summary_table,
         "top_pauses_table": top_pauses_table,
         "top_freed_table": top_freed_table,
         "summary": summary,
+        "gc_config_table": gc_config_table,
+        "executor_aggregated": executor_aggregated,
         "rows": rows,
         "stats": stats
     }
@@ -425,7 +636,7 @@ def analyze_gc_logs_tool(log_text: str) -> str:
     
     Use this tool when investigating memory problems, OOM errors, or GC overhead issues.
     This tool parses GC log output and provides statistics about pause times, memory freed,
-    and identifies problematic GC events.
+    and identifies problematic GC events with executor-level aggregation.
     
     Args:
         log_text: Raw GC log text OR grep output (JSON array with line_text fields).
@@ -434,9 +645,12 @@ def analyze_gc_logs_tool(log_text: str) -> str:
     Returns:
         JSON string with GC analysis including:
         - summary: Overview statistics (total events, pause times, memory freed)
+        - driver_gc_table: Detailed driver GC events with duration, heap usage, reclaimed memory
+        - executor_summary_table: Executor-level aggregation with health status
+        - gc_config_table: Detected GC configuration parameters
         - top_pauses_table: Longest pause events (potential performance issues)
-        - top_freed_table: Largest memory frees
         - stats: Detailed statistics (p50/p95/p99 pause times, event counts)
+        - executor_details: Per-executor metrics for programmatic access
     
     Examples:
         - Use after grep_logs_tool finds GC-related entries
@@ -450,10 +664,14 @@ def analyze_gc_logs_tool(log_text: str) -> str:
         sort_by="duration"
     )
     
-    # Return a JSON-serializable summary for the agent
+    # Return comprehensive analysis for the agent
     return json.dumps({
         "summary": result.get("summary", ""),
+        "driver_gc_table": result.get("driver_gc_table", ""),
+        "executor_summary_table": result.get("executor_summary_table", ""),
+        "gc_config_table": result.get("gc_config_table", ""),
         "top_pauses_table": result.get("top_pauses_table", ""),
         "stats": result.get("stats", {}),
+        "executor_details": result.get("executor_aggregated", {}),
         "total_events": result.get("stats", {}).get("total_events", 0)
     }, indent=2)

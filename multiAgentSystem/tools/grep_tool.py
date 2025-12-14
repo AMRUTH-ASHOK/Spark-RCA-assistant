@@ -193,21 +193,179 @@ def grep_path_tool(
     return json.dumps(results, ensure_ascii=False)
 
 
+def create_evidence_map(grep_results: str) -> Dict[str, Any]:
+    """
+    Create evidence map with deduplication from grep results.
+    
+    Processes grep output to create an evidence map similar to AgentState.evidence_map:
+    {
+        "pattern_name": {
+            "count": N,
+            "timestamps": [list of timestamps],
+            "files": [unique file paths],
+            "sample_lines": [2-3 sample log lines],
+            "variables": [extracted variable parts like executor IDs]
+        }
+    }
+    
+    Args:
+        grep_results: JSON string output from grep_path_tool
+    
+    Returns:
+        Evidence map dictionary with deduplicated, structured evidence
+    """
+    try:
+        results = json.loads(grep_results)
+    except Exception:
+        return {"error": "Invalid grep results format"}
+    
+    if not isinstance(results, list):
+        return {"error": "Expected list of results"}
+    
+    evidence_map: Dict[str, Dict[str, Any]] = {}
+    
+    for result in results:
+        line_text = result.get("line_text", "")
+        file_path = result.get("path", "")
+        
+        # Extract timestamp from log line (common formats)
+        timestamp = None
+        ts_patterns = [
+            r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})",  # ISO format
+            r"(\d{2}:\d{2}:\d{2})",  # Time only
+            r"(\d+\.\d+s)",  # Spark relative time
+        ]
+        for ts_pattern in ts_patterns:
+            ts_match = re.search(ts_pattern, line_text)
+            if ts_match:
+                timestamp = ts_match.group(1)
+                break
+        
+        # Identify pattern from line content
+        patterns = [
+            ("OutOfMemoryError", r"OutOfMemoryError"),
+            ("GC_overhead", r"GC overhead limit exceeded"),
+            ("Executor_lost", r"(executor lost|lost executor)"),
+            ("Task_failure", r"(task failed|Task.*failed)"),
+            ("Connection_error", r"(connection.*refused|connection.*timeout)"),
+            ("Shuffle_fetch_failure", r"(shuffle.*fetch.*fail|FetchFailed)"),
+            ("ERROR", r"ERROR"),
+            ("WARN", r"WARN"),
+            ("Exception", r"Exception"),
+        ]
+        
+        for pattern_name, pattern_regex in patterns:
+            if re.search(pattern_regex, line_text, re.IGNORECASE):
+                if pattern_name not in evidence_map:
+                    evidence_map[pattern_name] = {
+                        "count": 0,
+                        "timestamps": [],
+                        "files": [],
+                        "sample_lines": [],
+                        "variables": []
+                    }
+                
+                entry = evidence_map[pattern_name]
+                entry["count"] += 1
+                
+                # Add timestamp if found
+                if timestamp and timestamp not in entry["timestamps"]:
+                    entry["timestamps"].append(timestamp)
+                
+                # Add file if not already present
+                if file_path and file_path not in entry["files"]:
+                    entry["files"].append(file_path)
+                
+                # Keep up to 3 sample lines
+                if len(entry["sample_lines"]) < 3:
+                    entry["sample_lines"].append(line_text)
+                
+                # Extract variables (executor IDs, task IDs, etc.)
+                var_patterns = [
+                    (r"executor[- ]?(\d+)", "executor_id"),
+                    (r"task[- ]?(\d+)", "task_id"),
+                    (r"stage[- ]?(\d+)", "stage_id"),
+                    (r"(\d+\.\d+\.\d+\.\d+)", "ip_address"),
+                ]
+                
+                for var_pattern, var_type in var_patterns:
+                    var_match = re.search(var_pattern, line_text, re.IGNORECASE)
+                    if var_match:
+                        var_value = f"{var_type}:{var_match.group(1)}"
+                        if var_value not in entry["variables"]:
+                            entry["variables"].append(var_value)
+    
+    # Sort timestamps and limit them
+    for pattern_name, entry in evidence_map.items():
+        entry["timestamps"] = sorted(entry["timestamps"])[:10]  # Keep first 10
+        entry["files"] = list(set(entry["files"]))[:5]  # Keep unique, max 5
+        entry["variables"] = list(set(entry["variables"]))[:10]  # Keep unique, max 10
+    
+    return evidence_map
+
+
+def format_evidence_summary(evidence_map: Dict[str, Any]) -> str:
+    """
+    Format evidence map into a human-readable summary.
+    
+    Args:
+        evidence_map: Evidence map from create_evidence_map
+    
+    Returns:
+        Formatted string summary of evidence
+    """
+    if not evidence_map or "error" in evidence_map:
+        return "No evidence collected"
+    
+    lines = ["**Evidence Summary:**\n"]
+    
+    # Sort by count descending
+    sorted_patterns = sorted(evidence_map.items(), key=lambda x: x[1].get("count", 0), reverse=True)
+    
+    for pattern_name, entry in sorted_patterns:
+        count = entry.get("count", 0)
+        files = len(entry.get("files", []))
+        timestamps = entry.get("timestamps", [])
+        variables = entry.get("variables", [])
+        
+        lines.append(f"\n**{pattern_name}**: {count} occurrences across {files} files")
+        
+        if timestamps:
+            time_range = f"{timestamps[0]} ... {timestamps[-1]}" if len(timestamps) > 1 else timestamps[0]
+            lines.append(f"  - Time range: {time_range}")
+        
+        if variables:
+            lines.append(f"  - Variables: {', '.join(variables[:5])}")
+        
+        # Show first sample line
+        samples = entry.get("sample_lines", [])
+        if samples:
+            sample = samples[0][:150] + "..." if len(samples[0]) > 150 else samples[0]
+            lines.append(f"  - Sample: `{sample}`")
+    
+    return "\n".join(lines)
+
+
 # LangChain tool wrapper for use with ReAct agents
 @tool
 def grep_logs_tool(target: str, patterns: str) -> str:
     """
-    Search Spark log files for specific patterns/keywords.
+    Search Spark log files for specific patterns/keywords with automatic deduplication.
     
     Use this tool to search for errors, exceptions, and other patterns in log files.
-    This is the primary tool for investigating log-based evidence.
+    Automatically deduplicates results and creates structured evidence map to reduce
+    token usage from redundant log entries.
     
     Args:
         target: The path to the log directory or file to search (must be under /Volumes/)
         patterns: Comma-separated list of patterns/keywords to search for (e.g., "ERROR,OutOfMemoryError,executor lost")
     
     Returns:
-        JSON string with search results containing path, line_no, line_text for each match
+        JSON string with deduplicated evidence:
+        - total_matches: Total number of raw matches found
+        - evidence_map: Structured deduplication by pattern type with counts, timestamps, sample lines
+        - evidence_summary: Human-readable summary of findings
+        - patterns_found: List of pattern types detected
     
     Examples:
         - grep_logs_tool("/Volumes/logs/spark/", "ERROR,Exception")
@@ -219,7 +377,8 @@ def grep_logs_tool(target: str, patterns: str) -> str:
     if not pattern_list:
         return json.dumps({"error": "No patterns provided"})
     
-    return grep_path_tool(
+    # Get raw grep results
+    grep_output = grep_path_tool(
         target=target,
         patterns=pattern_list,
         mode="any",
@@ -228,3 +387,24 @@ def grep_logs_tool(target: str, patterns: str) -> str:
         restrict_to_volumes=True,
         max_results=5000
     )
+    
+    # Create evidence map for deduplication
+    evidence_map = create_evidence_map(grep_output)
+    evidence_summary = format_evidence_summary(evidence_map)
+    
+    # Parse for total count
+    try:
+        raw_results = json.loads(grep_output)
+        total_matches = len(raw_results) if isinstance(raw_results, list) else 0
+    except Exception:
+        total_matches = 0
+    
+    # Get list of patterns found
+    patterns_found = list(evidence_map.keys()) if isinstance(evidence_map, dict) and "error" not in evidence_map else []
+    
+    return json.dumps({
+        "total_matches": total_matches,
+        "patterns_found": patterns_found,
+        "evidence_map": evidence_map,
+        "evidence_summary": evidence_summary
+    }, indent=2)

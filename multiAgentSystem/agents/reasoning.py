@@ -94,6 +94,35 @@ def reasoning_node(state: AgentState) -> AgentState:
     # 3) Either evidence is sufficient OR we've hit max loops → summarize
     # Use optimized evidence_map strategy
     evidence_for_summary = state.get("evidence_summary") or "(no evidence collected)"
+    
+    # Check if evidence contains critical errors
+    evidence_map = state.get("evidence_map", {})
+    has_critical_error = any("CRITICAL_ERROR" in key or "error_no" in key for key in evidence_map.keys())
+    
+    # If there's a critical error, generate a diagnostic report instead of RCA
+    if has_critical_error:
+        error_keys = [k for k in evidence_map.keys() if "CRITICAL_ERROR" in k or "error_no" in k]
+        error_details = "\n\n".join([evidence_map[k]["sample_lines"][0] for k in error_keys if evidence_map[k]["sample_lines"]])
+        
+        return {
+            "hypotheses": hypotheses,
+            "keywords": keywords,
+            "last_logs_chunk": last_logs_chunk,
+            "analyze_parse_loops": analyze_loops,
+            "draft": {
+                "problem": f"System Configuration Error: Unable to perform analysis due to missing or invalid inputs.",
+                "rca": f"Root Cause: {error_details}",
+                "mitigation": (
+                    "1. Verify that 'logs_path' is provided in the initial state\n"
+                    "2. Ensure logs_path points to a valid Unity Catalog volume path\n"
+                    "3. Check that the path is accessible and contains Spark log files\n"
+                    "4. Re-run the analysis with correct configuration"
+                )
+            },
+            "confidence": 0.0,
+            "last_status": "summarized",
+            "next_action": "",
+        }
 
     summary = invoke_json(
         SUMMARIZE_PROMPT,

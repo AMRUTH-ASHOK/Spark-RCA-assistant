@@ -137,20 +137,32 @@ def parser_node(state: AgentState) -> AgentState:
     
     # Validate inputs
     if not logs_path or not logs_path.strip():
-        # Merge error into existing evidence map
+        # Create explicit error message for user context
+        error_msg = (
+            "[CRITICAL ERROR] No logs path provided in the initial state.\n"
+            "The system cannot analyze logs without a valid path.\n\n"
+            "USER ACTION REQUIRED:\n"
+            "- Please provide 'logs_path' in the initial state\n"
+            "- Format: '/Volumes/catalog/schema/volume/path/to/logs/'\n"
+            "- Ensure the path is accessible and contains Spark log files\n\n"
+            "Example initial state:\n"
+            f"  logs_path: '/Volumes/amruthcatalogtest/default/testsparklogs/sample/'\n"
+            f"  user_context: '{state.get('user_context', 'Your issue description...')}'"
+        )
+        
         evidence_map = state.get("evidence_map", {}).copy()
-        evidence_map["error_no_path"] = {
+        evidence_map["CRITICAL_ERROR_NO_LOGS_PATH"] = {
             "count": 1,
             "timestamps": [],
             "files": [],
-            "sample_lines": ["[ERROR] No logs path provided. Please provide a valid logs path to analyze."],
+            "sample_lines": [error_msg],
             "variables": []
         }
         error_summary = format_evidence_for_llm(evidence_map, max_patterns=10)
         return {
             "evidence_map": evidence_map,
             "evidence_summary": error_summary,
-            "last_logs_chunk": "Error: No logs path provided",
+            "last_logs_chunk": error_msg,
             "last_generated_keywords": []
         }
     
@@ -206,9 +218,10 @@ Decide which tool(s) to use based on the keywords and what you find.""")
                 agent_response = msg.get("content", "")
                 break
         
-        # The agent may have used grep_logs - check if we can deduplicate the results
+        # The agent may have used grep_logs_tool (enhanced format) or other tools
         # Look for tool call results in messages
-        grep_results = []
+        evidence_map = state.get("evidence_map", {}).copy()
+        found_evidence = False
         tool_extraction_errors = []
         
         for msg in messages:
@@ -216,47 +229,74 @@ Decide which tool(s) to use based on the keywords and what you find.""")
                 try:
                     tool_output = msg.content
                     parsed = json.loads(tool_output)
-                    if isinstance(parsed, list):
-                        # Validate each item has required structure
-                        for item in parsed:
-                            if isinstance(item, dict) and 'line_text' in item:
-                                grep_results.append(item)
-                            elif isinstance(item, dict):
-                                # Dict but missing expected structure
-                                tool_extraction_errors.append(
-                                    f"Tool output item missing 'line_text' field: {list(item.keys())}"
-                                )
-                    elif isinstance(parsed, dict):
-                        # GC analyzer returns a dict, not a list
-                        grep_results.append({"line_text": str(parsed), "path": logs_path, "line_no": 0})
+                    
+                    # Handle enhanced grep_logs_tool format (with evidence_map)
+                    if isinstance(parsed, dict) and "evidence_map" in parsed:
+                        # Merge the evidence_map from tool output
+                        tool_evidence_map = parsed.get("evidence_map", {})
+                        if isinstance(tool_evidence_map, dict) and tool_evidence_map:
+                            # Merge evidence maps, combining counts for duplicate keys
+                            for pattern_key, entry in tool_evidence_map.items():
+                                if pattern_key in evidence_map:
+                                    # Merge existing entry
+                                    existing = evidence_map[pattern_key]
+                                    existing["count"] += entry.get("count", 0)
+                                    existing["timestamps"].extend(entry.get("timestamps", []))
+                                    existing["files"].extend(entry.get("files", []))
+                                    existing["variables"].extend(entry.get("variables", []))
+                                    # Keep only first 3 sample lines
+                                    if len(existing["sample_lines"]) < 3:
+                                        existing["sample_lines"].extend(entry.get("sample_lines", []))
+                                    # Deduplicate lists
+                                    existing["timestamps"] = sorted(list(set(existing["timestamps"])))[:10]
+                                    existing["files"] = list(set(existing["files"]))[:5]
+                                    existing["variables"] = list(set(existing["variables"]))[:10]
+                                    existing["sample_lines"] = existing["sample_lines"][:3]
+                                else:
+                                    # Add new entry
+                                    evidence_map[pattern_key] = entry
+                            found_evidence = True
+                    
+                    # Handle GC analyzer output (dict with stats/tables)
+                    elif isinstance(parsed, dict) and ("summary" in parsed or "stats" in parsed):
+                        # Store GC analysis as special evidence entry
+                        gc_key = "GC_Analysis"
+                        gc_summary = parsed.get("summary", "")
+                        gc_driver_table = parsed.get("driver_gc_table", "")
+                        gc_executor_table = parsed.get("executor_summary_table", "")
+                        
+                        combined_gc = f"{gc_summary}\n\n{gc_driver_table}\n\n{gc_executor_table}"
+                        
+                        evidence_map[gc_key] = {
+                            "count": 1,
+                            "timestamps": [],
+                            "files": [logs_path],
+                            "sample_lines": [combined_gc[:500]],  # Limit to 500 chars
+                            "variables": []
+                        }
+                        found_evidence = True
+                    
+                    # Handle old format (list of grep results) - fallback for compatibility
+                    elif isinstance(parsed, list):
+                        grep_output = json.dumps(parsed)
+                        evidence_map = process_grep_results(evidence_map, grep_output)
+                        found_evidence = True
+                        
                 except json.JSONDecodeError as e:
-                    tool_extraction_errors.append(f"JSON decode error in tool output: {str(e)}")
+                    tool_extraction_errors.append(f"JSON decode error: {str(e)}")
                 except Exception as e:
-                    tool_extraction_errors.append(f"Unexpected error parsing tool output: {str(e)}")
+                    tool_extraction_errors.append(f"Error parsing tool output: {str(e)}")
         
-        # Raise error if tool extraction consistently failed but we got tool messages
-        if tool_extraction_errors and not grep_results:
-            raise StateError(
-                f"Parser tool extraction failed. Expected grep results with 'line_text' field. "
-                f"Errors: {'; '.join(tool_extraction_errors[:3])}"
-            )
-        
-        # Process grep results if we found any
-        evidence_map = state.get("evidence_map", {}).copy()
-        if grep_results:
-            # Convert grep results to JSON string for process_grep_results
-            grep_output = json.dumps(grep_results)
-            evidence_map = process_grep_results(evidence_map, grep_output)
-        else:
-            # If no structured grep results, store the agent's response as evidence
+        # If no evidence found from tools, store agent's response
+        if not found_evidence:
             import hashlib
             content_hash = hashlib.md5(agent_response.encode()).hexdigest()[:12]
-            key = f"{logs_path}::{'|'.join(kw)}::{content_hash}"
+            key = f"Parser_Response_{content_hash}"
             evidence_map[key] = {
                 "count": 1,
                 "timestamps": [],
                 "files": [logs_path],
-                "sample_lines": [agent_response or "[No findings from parser agent]"],
+                "sample_lines": [agent_response[:500] if agent_response else "[No findings from parser agent]"],
                 "variables": []
             }
         

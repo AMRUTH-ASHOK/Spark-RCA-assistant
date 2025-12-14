@@ -131,8 +131,13 @@ SUMMARIZE_PROMPT = ChatPromptTemplate.from_messages(
          "Confidence = 3/4 = 0.75\n\n"
          
          "If all 5 statements are [PROVEN]: Confidence = 5/5 = 1.00\n"
-         "If only 2 of 6 statements are [PROVEN]: Confidence = 2/6 = 0.33\n\n"
-         
+         "If only 2 of 6 statements are [PROVEN]: Confidence = 2/6 = 0.33\n\n"         
+         "SPECIAL CASE - NO EVIDENCE:\n"
+         "If evidence shows '(no evidence collected)' or is minimal/empty:\n"
+         "- State clearly in PROBLEM that insufficient evidence was collected\n"
+         "- In RCA, explain what prevented evidence collection (missing logs, no access, limited data)\n"
+         "- In MITIGATION, provide steps to collect proper evidence or troubleshoot the data collection\n"
+         "- Set confidence to 0.0\n\n"         
          "IMPORTANT RULES:\n"
          "- Be intellectually honest: mark statements as [INFERRED] if logs don't directly prove them\n"
          "- Direct evidence means: explicit error messages, event logs, metrics showing the claim\n"
@@ -198,6 +203,10 @@ ANALYZER_PROMPT = ChatPromptTemplate.from_messages(
          "- Generate 4-8 keywords (broader search = more keywords, narrow = fewer)\n"
          "- Mix different levels: some broad, some specific\n"
          "- Include variations: 'OOM|OutOfMemory|Out of memory|heap space'\n"
+         "\n"
+         "NOTE: The grep_logs_tool automatically deduplicates results and creates an evidence map.\n"
+         "This means repeated log entries are counted and summarized, reducing token usage.\n"
+         "Focus on finding the right keywords rather than worrying about result volume.\n"
          "- Reference specific IDs from previous logs when available\n\n"
          
          "AVOID:\n"
