@@ -12,9 +12,11 @@ MLflow Tracing: This tool is decorated with @mlflow.trace for observability in D
 
 import re
 import json
+import os
 from typing import List, Dict, Any, Optional
 
 from langchain_core.tools import tool
+from multiAgentSystem.tools.grep_tool import grep_path_tool
 
 try:
     import mlflow
@@ -32,7 +34,8 @@ except ImportError:
 
 @mlflow.trace(span_type=SpanType.TOOL if MLFLOW_AVAILABLE else None, name="gc_analyzer_tool")
 def GC_analyzer_tool(
-    log_text: str,
+    log_text: str = "",
+    search_path: str = "",
     format: str = "markdown",
     max_rows: int = 200,
     min_duration_ms: float = 0.0,
@@ -47,6 +50,7 @@ def GC_analyzer_tool(
 
     Arguments:
       log_text: raw GC lines OR your grep output blob (with a JSON array of objects containing line_text,path,line_no).
+      search_path: Path to search for GC logs. If provided, performs grep for "Full GC" and analyzes results.
       format: 'markdown' or 'plain'
       max_rows: maximum rows in main table
       min_duration_ms: keep events with duration >= this
@@ -57,6 +61,22 @@ def GC_analyzer_tool(
     Returns:
       dict with: table, top_pauses_table, top_freed_table, summary, rows, stats
     """
+    # If search_path is provided, perform grep first
+    if search_path and not log_text:
+        try:
+            # Search for Full GC events
+            grep_results = grep_path_tool(
+                target=search_path,
+                pattern="Full GC",
+                mode="any",
+                recursive=True,
+                restrict_to_volumes=True,
+                max_results=10000
+            )
+            log_text = grep_results
+        except Exception as e:
+            return {"error": f"Failed to grep logs in {search_path}: {str(e)}"}
+
     # ======================= Helpers (scoped) =======================
     _UNIT_TO_BYTES = {"K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
 
@@ -127,8 +147,13 @@ def GC_analyzer_tool(
 
     def _derive_service_from_path(path: Optional[str]) -> Optional[str]:
         if not path: return None
+        # Check for service=driver/ or similar
         m = re.search(r"service=([^/]+)", path)
-        return m.group(1) if m else None
+        if m: return m.group(1)
+        # Check for service/executor pattern
+        if "service/executor" in path:
+            return "executor"
+        return None
 
     # ======================= Regexes =======================
     # General shapes we support:
@@ -630,7 +655,7 @@ def GC_analyzer_tool(
 
 # LangChain tool wrapper for use with ReAct agents
 @tool
-def analyze_gc_logs_tool(log_text: str) -> str:
+def analyze_gc_logs_tool(log_text: str = "", search_path: str = "") -> str:
     """
     Analyze Garbage Collection (GC) logs for memory-related issues.
     
@@ -641,6 +666,7 @@ def analyze_gc_logs_tool(log_text: str) -> str:
     Args:
         log_text: Raw GC log text OR grep output (JSON array with line_text fields).
                   Can be the direct output from grep_logs_tool when searching for GC patterns.
+        search_path: Path to search for GC logs (e.g., /Volumes/logs/). If provided, performs grep for "Full GC".
     
     Returns:
         JSON string with GC analysis including:
@@ -658,6 +684,7 @@ def analyze_gc_logs_tool(log_text: str) -> str:
     """
     result = GC_analyzer_tool(
         log_text=log_text,
+        search_path=search_path,
         format="markdown",
         max_rows=100,
         top_n=10,

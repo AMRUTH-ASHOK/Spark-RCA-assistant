@@ -16,7 +16,18 @@ example_output = {
         'confidence': 0.85,
         'iterations': 3,
         'keywords': ['01f0a416-cb80-1228-9eda-e3118e89fd48', 'OutOfMemoryError', 'executor lost'],
-        'evidence': ["Log evidence 1...", "Log evidence 2..."],
+        'evidence_map': {
+            "OutOfMemoryError": {
+                "count": 5,
+                "files": ["executor-1.log", "executor-2.log"],
+                "sample_lines": ["2023-10-27 10:00:01 ERROR Executor: Exception in task 0.0 in stage 0.0 (TID 0) java.lang.OutOfMemoryError: Java heap space"]
+            },
+            "executor lost": {
+                "count": 2,
+                "files": ["driver.log"],
+                "sample_lines": ["Executor 1 lost"]
+            }
+        },
         'critic_approved': False,
         'critique': 'The draft claims...'
     }

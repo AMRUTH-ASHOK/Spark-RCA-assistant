@@ -6,3 +6,5 @@ databricks-langchain
 databricks-agents
 uv
 reportlab
+markdown
+pygments
