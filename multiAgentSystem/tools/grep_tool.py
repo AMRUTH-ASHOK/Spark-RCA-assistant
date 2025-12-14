@@ -12,7 +12,7 @@ import os
 import re
 import json
 from pathlib import Path
-from typing import List, Tuple, Union, Iterator, Optional, Sequence
+from typing import List, Tuple, Union, Iterator, Optional, Sequence, Dict, Any
 
 from langchain_core.tools import tool
 

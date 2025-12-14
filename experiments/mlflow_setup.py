@@ -67,21 +67,27 @@ def setup_experiment(agent_name: str, tags: Optional[Dict[str, str]] = None) -> 
     
     experiment_name = get_experiment_name(agent_name)
     
-    # Create or get the experiment
-    experiment = mlflow.get_experiment_by_name(experiment_name)
-    if experiment is None:
-        experiment_id = mlflow.create_experiment(
-            experiment_name,
-            tags=tags or {"system": "spark-rca", "agent": agent_name}
-        )
-    else:
-        experiment_id = experiment.experiment_id
-    
-    # Set as active experiment
-    mlflow.set_experiment(experiment_name)
-    
-    print(f"✓ MLflow experiment set: {experiment_name} (ID: {experiment_id})")
-    return experiment_id
+    try:
+        # Create or get the experiment
+        experiment = mlflow.get_experiment_by_name(experiment_name)
+        if experiment is None:
+            experiment_id = mlflow.create_experiment(
+                experiment_name,
+                tags=tags or {"system": "spark-rca", "agent": agent_name}
+            )
+        else:
+            experiment_id = experiment.experiment_id
+        
+        # Set as active experiment
+        mlflow.set_experiment(experiment_name)
+        
+        print(f"✓ MLflow experiment set: {experiment_name} (ID: {experiment_id})")
+        return experiment_id
+        
+    except Exception as e:
+        print(f"Warning: Failed to set/create experiment '{experiment_name}'. Using default experiment.")
+        print(f"Error details: {e}")
+        return None
 
 
 def log_agent_metrics(
@@ -220,23 +226,7 @@ def track_agent_call(agent_name: str, scenario: Optional[str] = None):
     return decorator
 
 
-def enable_autologging():
-    """
-    Enable MLflow autologging for LangChain.
-    
-    Call this once at the start of your session/notebook.
-    """
-    if not MLFLOW_AVAILABLE:
-        print("Warning: MLflow not available. Autologging not enabled.")
-        return
-    
-    mlflow.langchain.autolog(
-        log_input_examples=True,
-        log_model_signatures=True,
-        log_models=False,  # Don't log models to save space
-        log_traces=True,   # Enable trace logging
-    )
-    print("✓ MLflow LangChain autologging enabled")
+
 
 
 def log_state_snapshot(state: Dict[str, Any], prefix: str = "state") -> None:
